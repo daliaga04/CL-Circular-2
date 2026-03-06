@@ -12,7 +12,7 @@ st.title("Forecast y análisis de exportaciones")
 # Cargar datos
 st.header("Carga de datos")
 
-df = pd.read_excel("data/BD reto circular.xlsx")
+df = pd.read_excel("data/BD reto circular.csv")
 df["Fecha"] = pd.to_datetime(df["Fecha"])
 
 st.write("Vista previa del dataset")
