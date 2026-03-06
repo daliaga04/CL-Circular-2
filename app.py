@@ -1,10 +1,9 @@
-streamlit-app
-│
-├── app.py
-├── requirements.txt
-├── data
-│   ├── BD reto circular.xlsx
-│   └── exportadores_carne_bovino_mexico_usa.csv
-│
-└── pages
-    └── forecast_prophet.py
+import streamlit as st
+
+st.title("Mi primera app en Streamlit")
+
+st.write("Hola 👋 esta es mi primera app desplegada desde GitHub")
+
+numero = st.slider("Selecciona un número", 0, 100)
+
+st.write("Número seleccionado:", numero)
