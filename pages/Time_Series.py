@@ -7,7 +7,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 #Cargar Base de Datos
-df = pd.read_csv("BD_reto_circular.csv")
+df = pd.read_csv("data/BD_reto_circular.csv")
 df['Fecha'] = pd.to_datetime(df['Fecha'])
 
 imp = df[df['flujo_id'] == 1].set_index('Fecha')['Exportaciones'].asfreq('MS')
