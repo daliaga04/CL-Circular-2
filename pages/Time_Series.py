@@ -7,7 +7,8 @@ import warnings
 warnings.filterwarnings('ignore')
 
 #Cargar Base de Datos
-df = pd.read_csv(os.path.join(BASE_DIR, "..", "BD_reto_circular.csv"))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+df = pd.read_csv(os.path.join(BASE_DIR, "..", "data", "BD_reto_circular.csv"))
 df['Fecha'] = pd.to_datetime(df['Fecha'])
 
 imp = df[df['flujo_id'] == 1].set_index('Fecha')['Exportaciones'].asfreq('MS')
