@@ -18,12 +18,14 @@ exp = df[df['flujo_id'] == 2].set_index('Fecha')['Exportaciones'].asfreq('MS')
 imp.index = pd.DatetimeIndex(imp.index)
 exp.index = pd.DatetimeIndex(exp.index)
 
+# Split train-test
 test_size = 12  # ← Este valor estaba vacío en tu notebook, ajústalo según tus datos
 imp_train = imp.iloc[:-test_size]
 imp_test  = imp.iloc[-test_size:]
 exp_train = exp.iloc[:-test_size]
 exp_test  = exp.iloc[-test_size:]
 
+# Entrenamiento prophet
 def train_prophet(serie, changepoint_prior=0.3):
     df_p = serie.reset_index().rename(columns={serie.index.name: 'ds', serie.name: 'y'})
     model = Prophet(
@@ -39,6 +41,7 @@ def train_prophet(serie, changepoint_prior=0.3):
 model_imp = train_prophet(imp_train)
 model_exp = train_prophet(exp_train)
 
+# Validación Train/Test
 def validate_prophet(model, serie_train, serie_test, nombre):
     future   = model.make_future_dataframe(periods=len(serie_test), freq='MS')
     forecast = model.predict(future)
@@ -62,6 +65,7 @@ def validate_prophet(model, serie_train, serie_test, nombre):
 fc_test_imp, pred_imp_test = validate_prophet(model_imp, imp_train, imp_test, "Importaciones")
 fc_test_exp, pred_exp_test = validate_prophet(model_exp, exp_train, exp_test, "Exportaciones")
 
+# Gráficas
 def plot_train_test_prophet(serie_train, serie_test, forecast, titulo):
     scale    = 1e6
     test_fc  = forecast[forecast['ds'].isin(serie_test.index)]
