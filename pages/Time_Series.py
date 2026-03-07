@@ -141,13 +141,13 @@ def plot_forecast(serie, forecast_mean, conf_int, titulo, color_hist, color_fc):
 
 # ───────────── SELECTOR DE PRODUCTO ─────────────
 st.markdown("---")
-st.subheader("1️⃣ Selecciona el tipo de producto")
+st.subheader("1️⃣ Selecciona el tipo de tipo_carne")
 
-if "Producto" not in df.columns:
-    st.error("No encuentro la columna 'Producto' en BD_reto_circular.csv. Ajusta el nombre en el código.")
+if "tipo_carne" not in df.columns:
+    st.error("No encuentro la columna 'tipo_carne' en BD_reto_circular.csv. Ajusta el nombre en el código.")
     st.stop()
 
-productos_disponibles = sorted(df["Producto"].dropna().unique().tolist())
+productos_disponibles = sorted(df["tipo_carne"].dropna().unique().tolist())
 producto_sel = st.radio(
     "Tipo de producto",
     options=productos_disponibles,
@@ -156,7 +156,7 @@ producto_sel = st.radio(
 )
 st.markdown(f"**Producto seleccionado:** {producto_sel}")
 
-df_prod = df[df["Producto"] == producto_sel].copy()
+df_prod = df[df["tipo_carne"] == producto_sel].copy()
 
 imp = df_prod[df_prod["flujo_id"] == 1].set_index("Fecha")["Exportaciones"].asfreq("MS")
 exp = df_prod[df_prod["flujo_id"] == 2].set_index("Fecha")["Exportaciones"].asfreq("MS")
