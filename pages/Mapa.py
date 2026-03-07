@@ -11,7 +11,7 @@ st.title("🗺️ Mapa de Exportaciones de Carne por Estado")
 # --- Cargar datos ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 df = pd.read_csv(
-    os.path.join(BASE_DIR, "..", "data", "empresas_exportadoras.csv"),
+    os.path.join(BASE_DIR, "..", "empresas_exportadoras.csv"),
     encoding="utf-8-sig"
 )
 df.columns = df.columns.str.strip()
