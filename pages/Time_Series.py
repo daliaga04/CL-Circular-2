@@ -15,7 +15,7 @@ st.title("📈 Time Series — Pronóstico de Comercio Exterior de Cárnicos")
 # ───────────────── CARGA DE DATOS ─────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 df = pd.read_csv(
-    os.path.join(BASE_DIR, "..", "BD_reto_circular.csv"),
+    os.path.join(BASE_DIR, "..", "Exportaciones_carne.csv"),
     encoding="utf-8-sig"
 )
 df.columns = df.columns.str.strip()
