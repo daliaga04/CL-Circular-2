@@ -9,7 +9,7 @@ warnings.filterwarnings('ignore')
 
 #Cargar Base de Datos
 # Asegúrate de que el archivo CSV esté en la misma carpeta que tu notebook
-df = pd.read_csv("empresas_exportadoras.csv")
+df = pd.read_csv("Exportaciones_carne.csv")
 df['Fecha'] = pd.to_datetime(df['Fecha'])
 
 imp = df[df['flujo_id'] == 1].set_index('Fecha')['Exportaciones'].asfreq('MS')
