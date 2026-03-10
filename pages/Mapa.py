@@ -1,166 +1,194 @@
+import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import requests
+import json
+from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Mapa Exportaciones de Carne", layout="wide")
-st.title("🗺️ Exportaciones de Carne por Estado - México")
+st.set_page_config(page_title="Mapa de Exportaciones", layout="wide")
+st.title("🗺️ Exportaciones de Carne por Estado")
 
-# ── Cargar datos ───────────────────────────────────────────────────────────────
-@st.cache_data
-def load_data():
-    df = pd.read_csv("empresas_exportadoras.csv", encoding="utf-8-sig", low_memory=False)
-    df["Producto"] = df["Producto"].str.strip()
-    df = df.dropna(subset=["Estado", "Producto"])
-    df["US FOB"] = pd.to_numeric(df["US FOB"], errors="coerce").fillna(0)
-    df["Volumen (kg)"] = pd.to_numeric(df["Volumen (kg)"], errors="coerce").fillna(0)
-    return df
+# --- Cargar datos ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+df = pd.read_csv(
+    os.path.join(BASE_DIR, "..", "empresas_exportadoras.csv"),
+    encoding="utf-8-sig"
+)
+df.columns = df.columns.str.strip()
 
-df = load_data()
+# --- Convertir fecha de serial Excel a datetime ---
+def excel_to_date(serial):
+    if pd.isna(serial):
+        return None
+    return datetime(1899, 12, 30) + timedelta(days=int(serial))
 
-# ── GeoJSON ────────────────────────────────────────────────────────────────────
-@st.cache_data
-def load_geojson():
-    url = "https://raw.githubusercontent.com/angelnmara/geojson/master/mexicoHigh.json"
-    return requests.get(url, timeout=15).json()
+df["Fecha_dt"] = df["Fecha"].apply(excel_to_date)
+df["Mes"] = df["Fecha_dt"].dt.to_period("M").astype(str)
 
-geojson = load_geojson()
+# --- Tipo Carne ---
+tipo_map = {
+    "Carne Bovino Fresca/Refrigerada": "Bovino Fresco/Refrigerado",
+    "Carne Bovino Congelado": "Bovino Congelado",
+    "Carne Cerdo": "Cerdo",
+}
+df["Tipo Carne"] = df["Producto"].str.strip().map(tipo_map).fillna("Otro")
 
-# ── Extraer nombres exactos del GeoJSON ────────────────────────────────────────
-geo_names = {f["properties"]["name"] for f in geojson["features"]}
+# --- Convertir unidades ---
+df["Valor (USD M)"] = df["US FOB"] / 1_000_000
+df["Volumen (t)"] = df["Volumen (kg)"] / 1_000
 
-# ── Mapeo de Estado CSV → nombre exacto GeoJSON ────────────────────────────────
-state_name_map = {
+# --- Mapeo nombres CSV → GeoJSON ---
+nombre_geojson = {
     "Aguascalientes": "Aguascalientes",
     "Baja California": "Baja California",
     "Baja California Sur": "Baja California Sur",
     "Campeche": "Campeche",
     "Chiapas": "Chiapas",
     "Chihuahua": "Chihuahua",
-    "Ciudad de Mexico": "Ciudad de Mexico",
-    "Ciudad de México": "Ciudad de Mexico",
-    "Coahuila": "Coahuila de Zaragoza",
-    "Coahuila de Zaragoza": "Coahuila de Zaragoza",
+    "Coahuila": "Coahuila",
     "Colima": "Colima",
     "Durango": "Durango",
-    "Estado de Mexico": "México",
-    "Estado de México": "México",
     "Guanajuato": "Guanajuato",
     "Guerrero": "Guerrero",
     "Hidalgo": "Hidalgo",
     "Jalisco": "Jalisco",
-    "Michoacan": "Michoacán de Ocampo",
-    "Michoacán": "Michoacán de Ocampo",
+    "Michoacan": "Michoacán",
     "Morelos": "Morelos",
+    "Estado de Mexico": "México",
+    "Ciudad de Mexico": "Distrito Federal",
     "Nayarit": "Nayarit",
     "Nuevo Leon": "Nuevo León",
-    "Nuevo León": "Nuevo León",
     "Oaxaca": "Oaxaca",
     "Puebla": "Puebla",
-    "Queretaro": "Querétaro de Arteaga",
-    "Querétaro": "Querétaro de Arteaga",
+    "Queretaro": "Querétaro",
     "Quintana Roo": "Quintana Roo",
     "San Luis Potosi": "San Luis Potosí",
-    "San Luis Potosí": "San Luis Potosí",
     "Sinaloa": "Sinaloa",
     "Sonora": "Sonora",
     "Tabasco": "Tabasco",
     "Tamaulipas": "Tamaulipas",
     "Tlaxcala": "Tlaxcala",
-    "Veracruz": "Veracruz de Ignacio de la Llave",
+    "Veracruz": "Veracruz",
     "Yucatan": "Yucatán",
-    "Yucatán": "Yucatán",
     "Zacatecas": "Zacatecas",
 }
 
-df["Estado_geo"] = df["Estado"].map(state_name_map).fillna(df["Estado"])
+# --- Cargar GeoJSON ---
+@st.cache_data
+def cargar_geojson():
+    url = "https://raw.githubusercontent.com/angelnmara/geojson/master/mexicoHigh.json"
+    response = requests.get(url)
+    return json.loads(response.text)
 
-# ── DEBUG (solo en desarrollo, quitar en producción) ───────────────────────────
-sin_match = set(df["Estado_geo"].unique()) - geo_names
-if sin_match:
-    st.sidebar.warning(f"⚠️ Estados sin match GeoJSON: {sin_match}")
+mx_geo = cargar_geojson()
 
-# ── Sidebar filtros ────────────────────────────────────────────────────────────
-st.sidebar.header("Filtros")
+# =====================================================
+# FILTROS EN PÁGINA
+# =====================================================
+st.subheader("⚙️ Filtros")
 
-product_options = {
-    "Total": None,
-    "Bovino Fresco/Refrigerado": "Carne Bovino Fresca/Refrigerada",
-    "Bovino Congelado": "Carne Bovino Congelado",
-    "Cerdo": "Carne Cerdo",
-}
-selected_product_label = st.sidebar.radio("Tipo de producto", list(product_options.keys()))
-selected_product = product_options[selected_product_label]
+col_f1, col_f2, col_f3 = st.columns([1, 2, 1])
 
-metric_options = {
-    "Volumen total (kg)": "Volumen",
-    "Valor total (US FOB $)": "Valor",
-}
-selected_metric_label = st.sidebar.radio("Métrica", list(metric_options.keys()))
-col_metric = metric_options[selected_metric_label]
-
-# ── Filtrar y agrupar ──────────────────────────────────────────────────────────
-filtered = df[df["Producto"] == selected_product] if selected_product else df.copy()
-
-grouped = (
-    filtered.groupby("Estado_geo", as_index=False)
-    .agg(
-        Volumen=("Volumen (kg)", "sum"),
-        Valor=("US FOB", "sum"),
-        Empresas=("Exportador", "nunique"),
-        Embarques=("Ordinal", "count"),
+with col_f1:
+    tipo_seleccion = st.radio(
+        "Tipo de carne",
+        options=["Total", "Bovino Fresco/Refrigerado", "Bovino Congelado", "Cerdo"],
+        index=0,
     )
-)
 
-grouped["Volumen_fmt"] = grouped["Volumen"].apply(lambda x: f"{x:,.0f} kg")
-grouped["Valor_fmt"] = grouped["Valor"].apply(lambda x: f"${x:,.2f}")
+meses_disponibles = sorted(df["Mes"].dropna().unique())
 
-# ── Mapa ───────────────────────────────────────────────────────────────────────
-fig = px.choropleth_map(
-    grouped,
-    geojson=geojson,
-    locations="Estado_geo",
+with col_f2:
+    rango_meses = st.select_slider(
+        "Rango de meses",
+        options=meses_disponibles,
+        value=(meses_disponibles[0], meses_disponibles[-1]),
+    )
+
+with col_f3:
+    variable = st.radio(
+        "Variable a visualizar",
+        options=["Valor (USD M)", "Volumen (t)"],
+        index=0,
+    )
+
+st.divider()
+
+# --- Filtrar datos ---
+df_filtrado = df[
+    (df["Mes"] >= rango_meses[0]) & (df["Mes"] <= rango_meses[1])
+].copy()
+
+if tipo_seleccion != "Total":
+    df_filtrado = df_filtrado[df_filtrado["Tipo Carne"] == tipo_seleccion]
+
+# =====================================================
+# MAPA COROPLÉTICO
+# =====================================================
+st.subheader("Exportaciones por Estado")
+
+agg_estado = df_filtrado.groupby("Estado", as_index=False).agg({
+    "Valor (USD M)": "sum",
+    "Volumen (t)": "sum",
+    "US FOB": "count",
+}).rename(columns={"US FOB": "Embarques"})
+
+agg_estado["estado_geo"] = agg_estado["Estado"].map(nombre_geojson).fillna(agg_estado["Estado"])
+
+if variable == "Valor (USD M)":
+    color_label = "Valor (USD M)"
+    titulo_var = "Valor de Exportación (USD Millones)"
+    color_scale = "YlOrRd"
+else:
+    color_label = "Volumen (t)"
+    titulo_var = "Volumen de Exportación (Toneladas)"
+    color_scale = "Blues"
+
+titulo = f"{titulo_var} — {tipo_seleccion} ({rango_meses[0]} a {rango_meses[1]})"
+
+fig_mapa = px.choropleth(
+    agg_estado,
+    geojson=mx_geo,
+    locations="estado_geo",
     featureidkey="properties.name",
-    color=col_metric,
-    color_continuous_scale="YlOrRd",
-    map_style="carto-positron",
-    zoom=4,
-    center={"lat": 24.0, "lon": -102.0},
-    opacity=0.75,
-    hover_name="Estado_geo",
+    color=variable,
+    color_continuous_scale=color_scale,
+    hover_name="Estado",
     hover_data={
-        "Estado_geo": False,
-        col_metric: False,
-        "Volumen_fmt": True,
-        "Valor_fmt": True,
-        "Empresas": True,
-        "Embarques": True,
+        "Valor (USD M)": ":,.2f",
+        "Volumen (t)": ":,.1f",
+        "Embarques": ":,",
+        "estado_geo": False,
     },
-    labels={
-        "Volumen_fmt": "Volumen",
-        "Valor_fmt": "Valor (US FOB)",
-        "Empresas": "Empresas únicas",
-        "Embarques": "# Embarques",
-    },
-    title=f"{selected_metric_label} — {selected_product_label}",
+    labels={variable: color_label},
+    title=titulo,
 )
-fig.update_layout(
-    height=600,
-    margin={"r": 0, "t": 40, "l": 0, "b": 0},
-    coloraxis_colorbar=dict(title=selected_metric_label, tickformat=",.0f"),
+
+fig_mapa.update_geos(
+    fitbounds="locations",
+    visible=False,
+    showcountries=False,
+    showcoastlines=True,
+    showland=True,
+    landcolor="lightgray",
 )
-st.plotly_chart(fig, use_container_width=True)
 
-# ── Tabla ──────────────────────────────────────────────────────────────────────
-st.subheader("📋 Detalle por Estado")
-display_df = grouped[["Estado_geo", "Volumen_fmt", "Valor_fmt", "Empresas", "Embarques"]].copy()
-display_df.columns = ["Estado", "Volumen (kg)", "Valor (US FOB)", "Empresas únicas", "Embarques"]
-display_df = display_df.sort_values(col_metric if col_metric in grouped.columns else "Volumen", ascending=False)
-st.dataframe(display_df, use_container_width=True, hide_index=True)
+fig_mapa.update_layout(
+    margin={"r": 0, "t": 50, "l": 0, "b": 0},
+    height=650,
+    coloraxis_colorbar=dict(title=color_label, thickness=20, len=0.6),
+)
 
-# ── KPIs ───────────────────────────────────────────────────────────────────────
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Volumen total (kg)", f"{grouped['Volumen'].sum():,.0f}")
-k2.metric("Valor total (US FOB)", f"${grouped['Valor'].sum():,.0f}")
-k3.metric("Empresas únicas", f"{filtered['Exportador'].nunique():,}")
-k4.metric("Embarques", f"{len(filtered):,}")
+st.plotly_chart(fig_mapa, use_container_width=True)
+
+# --- Tabla resumen ---
+st.markdown("#### Detalle por Estado")
+tabla = agg_estado[["Estado", "Embarques", "Valor (USD M)", "Volumen (t)"]]\
+    .sort_values(by=variable, ascending=False)\
+    .reset_index(drop=True)
+tabla.index = tabla.index + 1
+tabla["Valor (USD M)"] = tabla["Valor (USD M)"].map("{:,.2f}".format)
+tabla["Volumen (t)"] = tabla["Volumen (t)"].map("{:,.1f}".format)
+tabla["Embarques"] = tabla["Embarques"].map("{:,}".format)
+st.dataframe(tabla, use_container_width=True)
