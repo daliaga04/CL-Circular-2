@@ -31,6 +31,9 @@ tipo_map = {
 }
 df["Tipo Carne"] = df["Producto"].str.strip().map(tipo_map).fillna("Otro")
 
+# Colores 
+COLORS = ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#a65628", "#f781bf", "#999999"]
+
 # =====================================================
 # SIDEBAR
 # =====================================================
@@ -264,25 +267,13 @@ st.divider()
 # =====================================================
 st.subheader("📋 Resumen por Segmento")
 perf_display = perf_ord[["Segmento","n_empresas","embarques_med","valor_med",
-                          "distancia_med","riesgo_med","aduanas_med",
+                          "distancia_med",
                           "pct_fresco","pct_congelado","pct_cerdo"]].copy()
 perf_display.columns = ["Segmento","Empresas","Embarques (med)","Valor (med USD)",
-                        "Distancia (km)","Riesgo","Aduanas","% Fresco","% Congelado","% Cerdo"]
-perf_display["Valor (med USD)"]  = perf_display["Valor (med USD)"].map("${:,.0f}".format)
-perf_display["Distancia (km)"]   = perf_display["Distancia (km)"].map("{:,.0f}".format)
-perf_display["% Fresco"]         = perf_display["% Fresco"].map("{:.1%}".format)
-perf_display["% Congelado"]      = perf_display["% Congelado"].map("{:.1%}".format)
-perf_display["% Cerdo"]          = perf_display["% Cerdo"].map("{:.1%}".format)
+                        "Distancia (km)","% Fresco","% Congelado","% Cerdo"]
+perf_display["Valor (med USD)"] = perf_display["Valor (med USD)"].map("${:,.0f}".format)
+perf_display["Distancia (km)"]  = perf_display["Distancia (km)"].map("{:,.0f}".format)
+perf_display["% Fresco"]        = perf_display["% Fresco"].map("{:.1%}".format)
+perf_display["% Congelado"]     = perf_display["% Congelado"].map("{:.1%}".format)
+perf_display["% Cerdo"]         = perf_display["% Cerdo"].map("{:.1%}".format)
 st.dataframe(perf_display, use_container_width=True, hide_index=True)
-
-st.subheader("🔍 Empresas por Segmento")
-seg_filtro = st.selectbox("Ver empresas del segmento:", seg_order)
-empresas_seg = agg[agg["Segmento"] == seg_filtro][
-    ["Exportador","embarques","valor_total","volumen_total",
-     "precio_prom_kg","distancia_prom","riesgo_prom","aduanas_unicas"]
-].sort_values("valor_total", ascending=False).reset_index(drop=True)
-empresas_seg.index += 1
-empresas_seg["valor_total"]   = empresas_seg["valor_total"].map("${:,.0f}".format)
-empresas_seg["volumen_total"] = empresas_seg["volumen_total"].map("{:,.0f} kg".format)
-empresas_seg["precio_prom_kg"]= empresas_seg["precio_prom_kg"].map("${:,.2f}".format)
-st.dataframe(empresas_seg, use_container_width=True)
