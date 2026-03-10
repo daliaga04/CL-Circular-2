@@ -4,6 +4,41 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
 
+import plotly.graph_objects as go
+
+# ── Mapa coroplético (CORREGIDO con go.Figure) ───────────────────────────────
+fig_map = go.Figure(go.Choropleth(
+    locations=df_estado["iso"],
+    z=df_estado["valor"],
+    text=df_estado["Estado"],
+    colorscale="YlOrRd",
+    colorbar_title=label_valor,
+    hovertemplate="<b>%{text}</b><br>" + label_valor + ": %{z:,.0f}<extra></extra>",
+    marker_line_color="white",
+    marker_line_width=0.5,
+))
+
+fig_map.update_layout(
+    title_text=f"{segmento} — {label_valor} por Estado",
+    margin={"r": 0, "t": 40, "l": 0, "b": 0},
+    height=560,
+    geo=dict(
+        scope="north america",
+        showcoastlines=True,
+        coastlinecolor="lightgrey",
+        showland=True,
+        landcolor="whitesmoke",
+        showborder=True,
+        showcountries=True,
+        countrycolor="grey",
+        showframe=False,
+        lataxis_range=[14, 33],
+        lonaxis_range=[-118, -86],
+    )
+)
+
+st.plotly_chart(fig_map, use_container_width=True)
+
 st.set_page_config(
     page_title="Exportaciones de Carne México → EE.UU.",
     page_icon="🥩",
