@@ -4,7 +4,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import json
-import polyline  # pip install polyline
 from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Mapa de Rutas", layout="wide")
@@ -28,7 +27,7 @@ df["Tipo Carne"] = df["Producto"].str.strip().map(tipo_map).fillna("Otro")
 df["Valor (USD M)"] = df["US FOB"] / 1_000_000
 df["Volumen (t)"] = df["Volumen (kg)"] / 1_000
 
-# --- Coordenadas ---
+# --- Coordenadas de ciudades ---
 city_coords = {
     "Culiacan": (24.7994, -107.3940),
     "TIJUANA": (32.5149, -117.0382),
@@ -99,11 +98,60 @@ aduana_coords = {
 }
 
 # =====================================================
-# OSRM — OBTENER RUTA REAL POR CARRETERA
+# SIDEBAR — FILTROS
 # =====================================================
-@st.cache_data(show_spinner=False)
+st.sidebar.header("⚙️ Filtros")
+
+tipo_seleccion = st.sidebar.radio(
+    "Tipo de carne",
+    options=["Total", "Bovino Fresco/Refrigerado", "Bovino Congelado", "Cerdo"],
+    index=0,
+)
+
+mostrar_locales = st.sidebar.checkbox(
+    "Incluir rutas locales (distancia = 0 km)",
+    value=False,
+)
+
+usar_rutas_reales = st.sidebar.checkbox(
+    "🛣️ Usar rutas reales de carretera (OSRM)",
+    value=False,
+    help="Activa para trazar rutas por carretera. Requiere conexión a internet y tarda unos segundos.",
+)
+
+# --- Filtrar datos ---
+df_filtrado = df.copy()
+if tipo_seleccion != "Total":
+    df_filtrado = df_filtrado[df_filtrado["Tipo Carne"] == tipo_seleccion]
+
+# =====================================================
+# AGREGACIÓN DE RUTAS
+# =====================================================
+rutas_agg = df_filtrado.dropna(subset=["Ruta"]).groupby(
+    ["Localidad", "Aduana", "Ruta", "Distancia Frontera", "Indice Seguridad"],
+    as_index=False
+).agg({
+    "Valor (USD M)": "sum",
+    "Volumen (t)": "sum",
+    "US FOB": "count",
+}).rename(columns={"US FOB": "Embarques"})
+
+if not mostrar_locales:
+    rutas_agg = rutas_agg[rutas_agg["Distancia Frontera"] > 0]
+
+rutas_agg["lat_orig"] = rutas_agg["Localidad"].map(lambda x: city_coords.get(x, (None, None))[0])
+rutas_agg["lon_orig"] = rutas_agg["Localidad"].map(lambda x: city_coords.get(x, (None, None))[1])
+rutas_agg["lat_dest"] = rutas_agg["Aduana"].map(lambda x: aduana_coords.get(x, (None, None))[0])
+rutas_agg["lon_dest"] = rutas_agg["Aduana"].map(lambda x: aduana_coords.get(x, (None, None))[1])
+
+rutas_plot = rutas_agg.dropna(subset=["lat_orig", "lon_orig", "lat_dest", "lon_dest"]).copy()
+
+st.sidebar.markdown(f"**Rutas a graficar:** {len(rutas_plot)}")
+
+# =====================================================
+# OSRM — RUTAS REALES (solo si el usuario lo activa)
+# =====================================================
 def get_road_route(orig_lat, orig_lon, dest_lat, dest_lon):
-    """Consulta OSRM y devuelve lista de (lat, lon) de la ruta real."""
     url = (
         f"http://router.project-osrm.org/route/v1/driving/"
         f"{orig_lon},{orig_lat};{dest_lon},{dest_lat}"
@@ -113,13 +161,130 @@ def get_road_route(orig_lat, orig_lon, dest_lat, dest_lon):
         resp = requests.get(url, timeout=10)
         data = resp.json()
         if data.get("code") == "Ok":
-            encoded = data["routes"][0]["geometry"]
-            coords = polyline.decode(encoded)  # lista de (lat, lon)
+            import polyline as pl
+            coords = pl.decode(data["routes"][0]["geometry"])
             return coords
     except Exception:
         pass
-    # Fallback: línea recta si OSRM falla
     return [(orig_lat, orig_lon), (dest_lat, dest_lon)]
 
+route_cache = {}
+if usar_rutas_reales:
+    pares_unicos = rutas_plot[["Localidad", "Aduana", "lat_orig", "lon_orig", "lat_dest", "lon_dest"]]\
+        .drop_duplicates(subset=["Localidad", "Aduana"])
+    progress = st.progress(0, text="Calculando rutas reales...")
+    total = len(pares_unicos)
+    for i, (_, par) in enumerate(pares_unicos.iterrows()):
+        key = (par["Localidad"], par["Aduana"])
+        route_cache[key] = get_road_route(
+            par["lat_orig"], par["lon_orig"],
+            par["lat_dest"], par["lon_dest"]
+        )
+        progress.progress((i + 1) / total, text=f"Ruta {i+1}/{total}: {par['Localidad']} → {par['Aduana']}")
+    progress.empty()
+
 # =====================================================
-#
+# CONSTRUIR MAPA
+# =====================================================
+def seguridad_color(idx):
+    if idx <= 3:   return "green"
+    elif idx <= 5: return "gold"
+    elif idx <= 7: return "orange"
+    else:          return "red"
+
+fig_rutas = go.Figure()
+
+for _, row in rutas_plot.iterrows():
+    key = (row["Localidad"], row["Aduana"])
+    if usar_rutas_reales and key in route_cache:
+        coords = route_cache[key]
+        lats = [c[0] for c in coords]
+        lons = [c[1] for c in coords]
+    else:
+        lats = [row["lat_orig"], row["lat_dest"]]
+        lons = [row["lon_orig"], row["lon_dest"]]
+
+    color = seguridad_color(row["Indice Seguridad"])
+    ancho = max(1, row["Embarques"] / rutas_plot["Embarques"].max() * 6)
+
+    fig_rutas.add_trace(go.Scattergeo(
+        lon=lons,
+        lat=lats,
+        mode="lines",
+        line=dict(width=ancho, color=color),
+        opacity=0.7,
+        hoverinfo="text",
+        text=(
+            f"{row['Localidad']} → {row['Aduana']}<br>"
+            f"Ruta: {row['Ruta']}<br>"
+            f"Distancia: {row['Distancia Frontera']:,.0f} km<br>"
+            f"Embarques: {row['Embarques']:,}<br>"
+            f"Valor: ${row['Valor (USD M)']:,.2f}M USD<br>"
+            f"Seguridad: {row['Indice Seguridad']:.0f}/10"
+        ),
+        showlegend=False,
+    ))
+
+# Puntos origen
+fig_rutas.add_trace(go.Scattergeo(
+    lon=rutas_plot["lon_orig"],
+    lat=rutas_plot["lat_orig"],
+    mode="markers",
+    marker=dict(size=6, color="steelblue", symbol="circle"),
+    text=rutas_plot["Localidad"],
+    name="Origen",
+    hoverinfo="text",
+))
+
+# Puntos aduana
+aduanas_unicas = rutas_plot[["Aduana", "lat_dest", "lon_dest"]].drop_duplicates()
+fig_rutas.add_trace(go.Scattergeo(
+    lon=aduanas_unicas["lon_dest"],
+    lat=aduanas_unicas["lat_dest"],
+    mode="markers",
+    marker=dict(size=12, color="crimson", symbol="star"),
+    text=aduanas_unicas["Aduana"],
+    name="Aduana",
+    hoverinfo="text",
+))
+
+fig_rutas.update_geos(
+    scope="north america",
+    showland=True,
+    landcolor="rgb(243, 243, 243)",
+    countrycolor="rgb(204, 204, 204)",
+    showlakes=True,
+    lakecolor="rgb(200, 220, 255)",
+    center=dict(lat=24, lon=-102),
+    projection_scale=3.5,
+    lonaxis_range=[-120, -85],
+    lataxis_range=[14, 34],
+)
+
+fig_rutas.update_layout(
+    height=700,
+    margin={"r": 0, "t": 30, "l": 0, "b": 0},
+    legend=dict(x=0.01, y=0.99),
+    title=f"Rutas de Exportación — {tipo_seleccion} (color = índice de seguridad)",
+)
+
+st.plotly_chart(fig_rutas, use_container_width=True)
+
+st.markdown("""
+**Código de colores (Índice de Seguridad):**
+🟢 0-3: Seguro  |  🟡 4-5: Moderado  |  🟠 6-7: Riesgo Alto  |  🔴 8-10: Muy Peligroso
+""")
+
+# =====================================================
+# TABLA
+# =====================================================
+st.subheader("📋 Detalle de Rutas")
+tabla_rutas = rutas_agg[
+    ["Localidad", "Aduana", "Ruta", "Distancia Frontera", "Indice Seguridad", "Embarques", "Valor (USD M)", "Volumen (t)"]
+].sort_values("Valor (USD M)", ascending=False).reset_index(drop=True)
+tabla_rutas.index = tabla_rutas.index + 1
+tabla_rutas = tabla_rutas.rename(columns={
+    "Distancia Frontera": "Distancia (km)",
+    "Indice Seguridad": "Seguridad (0-10)",
+})
+st.dataframe(tabla_rutas, use_container_width=True)
