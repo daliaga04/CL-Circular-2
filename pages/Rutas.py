@@ -23,7 +23,7 @@ tipo_map = {
 }
 df["Tipo Carne"] = df["Producto"].str.strip().map(tipo_map).fillna("Otro")
 df["Valor (USD M)"] = df["US FOB"] / 1_000_000
-df["Volumen (t)"] = df["Volumen (kg)"] / 1_000
+df["Volumen (t)"]   = df["Volumen (kg)"] / 1_000
 
 city_coords = {
     "Culiacan": (24.7994, -107.3940), "TIJUANA": (32.5149, -117.0382),
@@ -171,7 +171,7 @@ rutas_agg["lat_dest"] = rutas_agg["Aduana"].map(lambda x: aduana_coords.get(x, (
 rutas_agg["lon_dest"] = rutas_agg["Aduana"].map(lambda x: aduana_coords.get(x, (None, None))[1])
 rutas_plot = rutas_agg.dropna(subset=["lat_orig", "lon_orig", "lat_dest", "lon_dest"]).copy()
 
-rutas_agg["Color"] = rutas_agg["Indice Seguridad"].apply(seguridad_color)
+rutas_agg["Color"]  = rutas_agg["Indice Seguridad"].apply(seguridad_color)
 rutas_agg["Riesgo"] = rutas_agg["Indice Seguridad"].apply(seguridad_label)
 
 vol_min = rutas_plot["Volumen (t)"].min()
@@ -185,6 +185,29 @@ def escalar_grosor(vol, min_v, max_v, min_px=1.5, max_px=12):
 st.sidebar.markdown(f"**Rutas a graficar:** {len(rutas_plot)}")
 
 # =====================================================
+# ✅ KPIs — NUEVO BLOQUE AGREGADO AQUÍ
+# =====================================================
+k1, k2, k3, k4 = st.columns(4)
+k1.metric(
+    "🛣️ Rutas Totales",
+    f"{len(rutas_plot):,}",
+)
+k2.metric(
+    "🚛 Embarques Totales",
+    f"{rutas_agg['Embarques'].sum():,}",
+)
+k3.metric(
+    "📦 Volumen Total",
+    f"{rutas_agg['Volumen (t)'].sum():,.0f} t",
+)
+k4.metric(
+    "💵 Valor Total",
+    f"${rutas_agg['Valor (USD M)'].sum():,.1f}M USD",
+)
+
+st.divider()
+
+# =====================================================
 # MAPA
 # =====================================================
 st.subheader("🗺️ Mapa de Rutas")
@@ -195,7 +218,7 @@ for _, row in rutas_plot.iterrows():
     coords = get_waypoints(row["Ruta"], row["lat_orig"], row["lon_orig"], row["lat_dest"], row["lon_dest"])
     lats = [c[0] for c in coords] + [None]
     lons = [c[1] for c in coords] + [None]
-    color = seguridad_color(row["Indice Seguridad"])
+    color  = seguridad_color(row["Indice Seguridad"])
     grosor = escalar_grosor(row["Volumen (t)"], vol_min, vol_max)
 
     fig_rutas.add_trace(go.Scattermapbox(
@@ -230,14 +253,11 @@ fig_rutas.update_layout(
         style="carto-positron",
         center=dict(lat=24.5, lon=-103.5),
         zoom=4.5,
-        layers=[
-            # Fronteras de estados de México
-            {
-                "sourcetype": "raster",
-                "source": ["https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"],
-                "below": "traces",
-            },
-        ],
+        layers=[{
+            "sourcetype": "raster",
+            "source": ["https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"],
+            "below": "traces",
+        }],
     ),
     height=650,
     margin={"r": 0, "t": 10, "l": 0, "b": 0},
@@ -245,7 +265,6 @@ fig_rutas.update_layout(
     title=dict(text=f"Rutas — {tipo_seleccion}  |  grosor = volumen  |  color = seguridad", font=dict(size=14)),
 )
 
-# Anotación de leyenda de colores encima del mapa
 st.plotly_chart(fig_rutas, use_container_width=True)
 
 st.markdown(
@@ -259,8 +278,6 @@ st.divider()
 # =====================================================
 # GRÁFICAS DE BARRAS
 # =====================================================
-
-# Etiqueta: "Origen → Aduana (X,XXX km)"
 rutas_agg["Ruta_corta"] = (
     rutas_agg["Localidad"] + " → " + rutas_agg["Aduana"]
     + " (" + rutas_agg["Distancia Frontera"].map(lambda x: f"{x:,.0f} km") + ")"
