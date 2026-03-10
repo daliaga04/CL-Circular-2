@@ -99,7 +99,7 @@ agg["PC2"] = coords[:, 1]
 
 # Ordenar clusters por valor mediano y asignar etiquetas
 orden = agg.groupby("Cluster")["valor_total"].median().sort_values()
-nombres_seg = ["Micro","Pequeño","Mediano","Grande","Nivel 5","Nivel 6","Nivel 7","Nivel 8"]
+nombres_seg = ["Pequeño","Mediano","Grande","Nivel 5","Nivel 6","Nivel 7","Nivel 8","Nivel 9"]
 nombre_map  = {c: nombres_seg[i] for i, c in enumerate(orden.index)}
 agg["Segmento"] = agg["Cluster"].map(nombre_map)
 seg_order = [nombres_seg[i] for i in range(n_clusters)]
