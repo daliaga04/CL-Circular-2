@@ -10,3 +10,6 @@ requests
 statsmodels
 pmdarima
 polyline
+sklearn
+json
+warnings
