@@ -133,3 +133,34 @@ fig = px.choropleth_map(
         col_metric: False,
         "Volumen_fmt": True,
         "Valor_fmt": True,
+        "Empresas": True,
+        "Embarques": True,
+    },
+    labels={
+        "Volumen_fmt": "Volumen",
+        "Valor_fmt": "Valor (US FOB)",
+        "Empresas": "Empresas únicas",
+        "Embarques": "# Embarques",
+    },
+    title=f"{selected_metric_label} — {selected_product_label}",
+)
+fig.update_layout(
+    height=600,
+    margin={"r": 0, "t": 40, "l": 0, "b": 0},
+    coloraxis_colorbar=dict(title=selected_metric_label, tickformat=",.0f"),
+)
+st.plotly_chart(fig, use_container_width=True)
+
+# ── Tabla ──────────────────────────────────────────────────────────────────────
+st.subheader("📋 Detalle por Estado")
+display_df = grouped[["Estado_geo", "Volumen_fmt", "Valor_fmt", "Empresas", "Embarques"]].copy()
+display_df.columns = ["Estado", "Volumen (kg)", "Valor (US FOB)", "Empresas únicas", "Embarques"]
+display_df = display_df.sort_values(col_metric if col_metric in grouped.columns else "Volumen", ascending=False)
+st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+# ── KPIs ───────────────────────────────────────────────────────────────────────
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Volumen total (kg)", f"{grouped['Volumen'].sum():,.0f}")
+k2.metric("Valor total (US FOB)", f"${grouped['Valor'].sum():,.0f}")
+k3.metric("Empresas únicas", f"{filtered['Exportador'].nunique():,}")
+k4.metric("Embarques", f"{len(filtered):,}")
