@@ -260,12 +260,16 @@ st.divider()
 # GRÁFICAS DE BARRAS
 # =====================================================
 
-# Etiqueta corta para el eje Y
-rutas_agg["Ruta_corta"] = rutas_agg["Localidad"] + " → " + rutas_agg["Aduana"]
+# Etiqueta: "Origen → Aduana (X,XXX km)"
+rutas_agg["Ruta_corta"] = (
+    rutas_agg["Localidad"] + " → " + rutas_agg["Aduana"]
+    + " (" + rutas_agg["Distancia Frontera"].map(lambda x: f"{x:,.0f} km") + ")"
+)
 
-# --- Gráfica 1: Embarques ---
-st.subheader("🚛 Top Rutas por Embarques")
-df_emb = rutas_agg.sort_values("Embarques", ascending=True)
+# --- Gráfica 1: Embarques (top 30) ---
+st.subheader("🚛 Top 30 Rutas por Embarques")
+df_emb = rutas_agg.sort_values("Embarques", ascending=False).head(30).sort_values("Embarques", ascending=True)
+
 fig_emb = go.Figure()
 fig_emb.add_trace(go.Bar(
     x=df_emb["Embarques"],
@@ -285,7 +289,7 @@ fig_emb.add_trace(go.Bar(
     ),
 ))
 fig_emb.update_layout(
-    height=max(400, len(df_emb) * 22),
+    height=max(400, len(df_emb) * 26),
     margin={"r": 100, "t": 20, "l": 10, "b": 10},
     xaxis_title="Embarques",
     yaxis_title="",
@@ -294,9 +298,10 @@ fig_emb.update_layout(
 )
 st.plotly_chart(fig_emb, use_container_width=True)
 
-# --- Gráfica 2: Valor ---
-st.subheader("💵 Top Rutas por Valor (USD M)")
-df_val = rutas_agg.sort_values("Valor (USD M)", ascending=True)
+# --- Gráfica 2: Valor (top 30) ---
+st.subheader("💵 Top 30 Rutas por Valor (USD M)")
+df_val = rutas_agg.sort_values("Valor (USD M)", ascending=False).head(30).sort_values("Valor (USD M)", ascending=True)
+
 fig_val = go.Figure()
 fig_val.add_trace(go.Bar(
     x=df_val["Valor (USD M)"],
@@ -316,7 +321,7 @@ fig_val.add_trace(go.Bar(
     ),
 ))
 fig_val.update_layout(
-    height=max(400, len(df_val) * 22),
+    height=max(400, len(df_val) * 26),
     margin={"r": 120, "t": 20, "l": 10, "b": 10},
     xaxis_title="Valor (USD M)",
     yaxis_title="",
