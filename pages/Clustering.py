@@ -107,7 +107,7 @@ nombre_map  = {c: nombres_seg[i] for i, c in enumerate(orden.index)}
 agg["Segmento"] = agg["Cluster"].map(nombre_map)
 seg_order = [nombres_seg[i] for i in range(n_clusters)]
 
-COLORS = px.colors.qualitative.Set2[:n_clusters]
+COLORS = ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#a65628", "#f781bf", "#999999"]
 cmap   = dict(zip(seg_order, COLORS))
 
 # Perfil por segmento
@@ -229,7 +229,7 @@ with col1:
         lbls = radar_labels + [radar_labels[0]]
         fig_radar.add_trace(go.Scatterpolar(
             r=vals, theta=lbls, fill="toself", name=seg,
-            line_color=COLORS[i], opacity=0.55,
+            line_color=COLORS[i], opacity=0.8,
         ))
     fig_radar.update_layout(
         polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
