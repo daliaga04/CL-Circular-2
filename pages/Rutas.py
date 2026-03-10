@@ -94,9 +94,6 @@ aduana_coords = {
     "ENSENADA": (31.8667, -116.5964),
 }
 
-# =====================================================
-# WAYPOINTS EXACTOS POR NOMBRE DE RUTA DEL CSV
-# =====================================================
 ROUTE_WAYPOINTS = {
     "Carr. 57D México - Querétaro - SLP - Matehuala - Monterrey - Nuevo Laredo": [
         (19.4326, -99.1332), (20.5888, -100.3899), (21.8818, -101.6833),
@@ -326,7 +323,7 @@ if tipo_seleccion != "Total":
     df_filtrado = df_filtrado[df_filtrado["Tipo Carne"] == tipo_seleccion]
 
 # =====================================================
-# AGREGACIÓN DE RUTAS
+# AGREGACIÓN — sumar volumen por ruta única
 # =====================================================
 rutas_agg = df_filtrado.dropna(subset=["Ruta"]).groupby(
     ["Localidad", "Aduana", "Ruta", "Distancia Frontera", "Indice Seguridad"],
@@ -347,16 +344,25 @@ rutas_agg["lon_dest"] = rutas_agg["Aduana"].map(lambda x: aduana_coords.get(x, (
 
 rutas_plot = rutas_agg.dropna(subset=["lat_orig", "lon_orig", "lat_dest", "lon_dest"]).copy()
 
+# --- Escalar grosor por volumen (1 a 12 px) ---
+vol_min = rutas_plot["Volumen (t)"].min()
+vol_max = rutas_plot["Volumen (t)"].max()
+
+def escalar_grosor(vol, min_v, max_v, min_px=1, max_px=12):
+    if max_v == min_v:
+        return (min_px + max_px) / 2
+    return min_px + (vol - min_v) / (max_v - min_v) * (max_px - min_px)
+
 st.sidebar.markdown(f"**Rutas a graficar:** {len(rutas_plot)}")
 
 # =====================================================
-# CONSTRUIR MAPA
+# CONSTRUIR MAPA — fondo minimalista
 # =====================================================
 def seguridad_color(idx):
-    if idx <= 3:   return "green"
-    elif idx <= 5: return "gold"
-    elif idx <= 7: return "orange"
-    else:          return "red"
+    if idx <= 3:   return "#2ecc71"   # verde
+    elif idx <= 5: return "#f1c40f"   # amarillo
+    elif idx <= 7: return "#e67e22"   # naranja
+    else:          return "#e74c3c"   # rojo
 
 fig_rutas = go.Figure()
 
@@ -369,22 +375,22 @@ for _, row in rutas_plot.iterrows():
     lats = [c[0] for c in coords] + [None]
     lons = [c[1] for c in coords] + [None]
     color = seguridad_color(row["Indice Seguridad"])
-    ancho = max(2, row["Embarques"] / rutas_plot["Embarques"].max() * 8)
+    grosor = escalar_grosor(row["Volumen (t)"], vol_min, vol_max)
 
     fig_rutas.add_trace(go.Scattermapbox(
         lon=lons,
         lat=lats,
         mode="lines",
-        line=dict(width=ancho, color=color),
-        opacity=0.75,
+        line=dict(width=grosor, color=color),
+        opacity=0.8,
         hoverinfo="text",
         text=(
-            f"{row['Localidad']} → {row['Aduana']}<br>"
-            f"Ruta: {row['Ruta']}<br>"
-            f"Distancia: {row['Distancia Frontera']:,.0f} km<br>"
-            f"Embarques: {row['Embarques']:,}<br>"
+            f"<b>{row['Localidad']} → {row['Aduana']}</b><br>"
+            f"Volumen: {row['Volumen (t)']:,.1f} t<br>"
             f"Valor: ${row['Valor (USD M)']:,.2f}M USD<br>"
-            f"Seguridad: {row['Indice Seguridad']:.0f}/10"
+            f"Embarques: {row['Embarques']:,}<br>"
+            f"Seguridad: {row['Indice Seguridad']:.0f}/10<br>"
+            f"Ruta: {row['Ruta']}"
         ),
         showlegend=False,
     ))
@@ -394,9 +400,9 @@ fig_rutas.add_trace(go.Scattermapbox(
     lon=rutas_plot["lon_orig"].tolist(),
     lat=rutas_plot["lat_orig"].tolist(),
     mode="markers",
-    marker=dict(size=8, color="steelblue"),
+    marker=dict(size=7, color="#2980b9"),
     text=rutas_plot["Localidad"].tolist(),
-    name="Origen",
+    name="🔵 Origen",
     hoverinfo="text",
 ))
 
@@ -406,29 +412,45 @@ fig_rutas.add_trace(go.Scattermapbox(
     lon=aduanas_unicas["lon_dest"].tolist(),
     lat=aduanas_unicas["lat_dest"].tolist(),
     mode="markers",
-    marker=dict(size=14, color="crimson", symbol="star"),
+    marker=dict(size=13, color="#c0392b", symbol="star"),
     text=aduanas_unicas["Aduana"].tolist(),
-    name="Aduana",
+    name="⭐ Aduana",
     hoverinfo="text",
 ))
 
 fig_rutas.update_layout(
     mapbox=dict(
-        style="carto-positron",
+        style="white-bg",           # fondo blanco limpio, sin ruidos
+        layers=[{                   # contorno de países/estados desde Natural Earth
+            "below": "traces",
+            "sourcetype": "raster",
+            "source": [
+                "https://basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png"
+            ],
+        }],
         center=dict(lat=24.5, lon=-103.5),
         zoom=4.5,
     ),
-    height=700,
-    margin={"r": 0, "t": 40, "l": 0, "b": 0},
-    legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.8)"),
-    title=f"Rutas de Exportación — {tipo_seleccion} (color = índice de seguridad)",
+    height=680,
+    margin={"r": 0, "t": 50, "l": 0, "b": 0},
+    legend=dict(
+        x=0.01, y=0.99,
+        bgcolor="rgba(255,255,255,0.85)",
+        bordercolor="#cccccc",
+        borderwidth=1,
+    ),
+    title=dict(
+        text=f"Rutas de Exportación — {tipo_seleccion}  |  grosor = volumen  |  color = seguridad",
+        font=dict(size=15),
+    ),
 )
 
 st.plotly_chart(fig_rutas, use_container_width=True)
 
 st.markdown("""
-**Código de colores (Índice de Seguridad):**
-🟢 0-3: Seguro  |  🟡 4-5: Moderado  |  🟠 6-7: Riesgo Alto  |  🔴 8-10: Muy Peligroso
+**Color de ruta (Índice de Seguridad):** 
+🟢 0-3 Seguro &nbsp;|&nbsp; 🟡 4-5 Moderado &nbsp;|&nbsp; 🟠 6-7 Riesgo Alto &nbsp;|&nbsp; 🔴 8-10 Muy Peligroso  
+**Grosor de línea:** proporcional al volumen exportado (t)
 """)
 
 # =====================================================
@@ -436,8 +458,9 @@ st.markdown("""
 # =====================================================
 st.subheader("📋 Detalle de Rutas")
 tabla_rutas = rutas_agg[
-    ["Localidad", "Aduana", "Ruta", "Distancia Frontera", "Indice Seguridad", "Embarques", "Valor (USD M)", "Volumen (t)"]
-].sort_values("Valor (USD M)", ascending=False).reset_index(drop=True)
+    ["Localidad", "Aduana", "Ruta", "Distancia Frontera", "Indice Seguridad",
+     "Embarques", "Valor (USD M)", "Volumen (t)"]
+].sort_values("Volumen (t)", ascending=False).reset_index(drop=True)
 tabla_rutas.index = tabla_rutas.index + 1
 tabla_rutas = tabla_rutas.rename(columns={
     "Distancia Frontera": "Distancia (km)",
