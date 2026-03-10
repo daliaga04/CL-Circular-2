@@ -4,51 +4,11 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
 
-import plotly.graph_objects as go
-
-# ── Mapa coroplético (CORREGIDO con go.Figure) ───────────────────────────────
-fig_map = go.Figure(go.Choropleth(
-    locations=df_estado["iso"],
-    z=df_estado["valor"],
-    text=df_estado["Estado"],
-    colorscale="YlOrRd",
-    colorbar_title=label_valor,
-    hovertemplate="<b>%{text}</b><br>" + label_valor + ": %{z:,.0f}<extra></extra>",
-    marker_line_color="white",
-    marker_line_width=0.5,
-))
-
-fig_map.update_layout(
-    title_text=f"{segmento} — {label_valor} por Estado",
-    margin={"r": 0, "t": 40, "l": 0, "b": 0},
-    height=560,
-    geo=dict(
-        scope="north america",
-        showcoastlines=True,
-        coastlinecolor="lightgrey",
-        showland=True,
-        landcolor="whitesmoke",
-        showborder=True,
-        showcountries=True,
-        countrycolor="grey",
-        showframe=False,
-        lataxis_range=[14, 33],
-        lonaxis_range=[-118, -86],
-    )
-)
-
-st.plotly_chart(fig_map, use_container_width=True)
-
-st.set_page_config(
-    page_title="Exportaciones de Carne México → EE.UU.",
-    page_icon="🥩",
-    layout="wide"
-)
-
+# ── PASO 1: Config página ────────────────────────────────────────────────────
+st.set_page_config(page_title="Exportaciones de Carne", page_icon="🥩", layout="wide")
 st.title("🥩 Exportaciones de Carne: México → Estados Unidos")
-st.markdown("Visualización por estado de origen del exportador")
 
-# ── Carga de datos ───────────────────────────────────────────────────────────
+# ── PASO 2: Carga de datos ───────────────────────────────────────────────────
 @st.cache_data
 def load_data():
     df = pd.read_csv("empresas_exportadoras.csv", encoding="utf-8-sig")
@@ -58,14 +18,13 @@ def load_data():
 
 df = load_data()
 
-# ── Sidebar ──────────────────────────────────────────────────────────────────
+# ── PASO 3: Sidebar ──────────────────────────────────────────────────────────
 st.sidebar.header("🔧 Filtros")
-
 productos_disponibles = sorted(df["Producto"].dropna().unique())
 segmento = st.sidebar.radio("Tipo de Carne", ["Total"] + productos_disponibles, index=0)
 metrica = st.sidebar.radio("Visualizar por", ["FOB (USD)", "Volumen (kg)"], index=0)
 
-# ── Filtrar ──────────────────────────────────────────────────────────────────
+# ── PASO 4: Filtrar ──────────────────────────────────────────────────────────
 df_filtered = df.copy()
 if segmento != "Total":
     df_filtered = df_filtered[df_filtered["Producto"] == segmento]
@@ -73,7 +32,7 @@ if segmento != "Total":
 col_valor = "US FOB" if metrica == "FOB (USD)" else "Volumen (kg)"
 label_valor = "US FOB (USD)" if metrica == "FOB (USD)" else "Volumen (kg)"
 
-# ── Agrupar por Estado ───────────────────────────────────────────────────────
+# ── PASO 5: Agrupar por Estado ───────────────────────────────────────────────
 df_estado = (
     df_filtered
     .groupby("Estado", as_index=False)[col_valor]
@@ -82,7 +41,7 @@ df_estado = (
     .sort_values("valor", ascending=False)
 )
 
-# ── ISO mapping ──────────────────────────────────────────────────────────────
+# ── PASO 6: ISO mapping ──────────────────────────────────────────────────────
 estado_iso = {
     "Aguascalientes": "MX-AGU", "Baja California": "MX-BCN",
     "Baja California Sur": "MX-BCS", "Campeche": "MX-CAM",
@@ -108,10 +67,10 @@ estado_iso = {
 }
 
 df_estado["iso"] = df_estado["Estado"].map(estado_iso)
-df_mapa = df_estado.dropna(subset=["iso"])
+df_mapa = df_estado.dropna(subset=["iso"])  # ← importante: solo filas con ISO válido
 
-# ── Mapa ─────────────────────────────────────────────────────────────────────
-fig_map = go.Figure(go.Choropleth(
+# ── PASO 7: Mapa ─────────────────────────────────────────────────────────────
+fig_map = go.Figure(go.Choropleth(      # ← df_mapa ya existe aquí ✅
     locations=df_mapa["iso"],
     z=df_mapa["valor"],
     text=df_mapa["Estado"],
@@ -143,7 +102,7 @@ fig_map.update_layout(
 
 st.plotly_chart(fig_map, use_container_width=True)
 
-# ── KPIs ─────────────────────────────────────────────────────────────────────
+# ── PASO 8: KPIs ─────────────────────────────────────────────────────────────
 col1, col2, col3 = st.columns(3)
 total_val = df_estado["valor"].sum()
 top_estado = df_estado.iloc[0]["Estado"] if not df_estado.empty else "N/A"
@@ -156,7 +115,7 @@ with col2:
 with col3:
     st.metric("Estados activos", num_estados)
 
-# ── Tabla ────────────────────────────────────────────────────────────────────
+# ── PASO 9: Tabla ─────────────────────────────────────────────────────────────
 st.subheader("📊 Detalle por Estado")
 df_tabla = df_estado.drop(columns=["iso"]).copy()
 df_tabla.columns = ["Estado", label_valor]
@@ -169,7 +128,7 @@ st.dataframe(
     height=400
 )
 
-# ── Bar chart top 15 ─────────────────────────────────────────────────────────
+# ── PASO 10: Bar chart ────────────────────────────────────────────────────────
 st.subheader("📈 Top 15 Estados Exportadores")
 top15 = df_tabla.head(15)
 fig_bar = px.bar(
