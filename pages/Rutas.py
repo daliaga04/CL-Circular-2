@@ -4,7 +4,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import json
-from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Mapa de Rutas", layout="wide")
 st.title("📍 Rutas de Exportación: Origen → Aduana Fronteriza")
@@ -98,6 +97,132 @@ aduana_coords = {
 }
 
 # =====================================================
+# WAYPOINTS MANUALES POR RUTA (simulan carreteras reales)
+# Formato: "Nombre Ruta CSV" -> lista de (lat, lon)
+# =====================================================
+route_waypoints = {
+    # Carr. 57D México - Querétaro - SLP - Matehuala - Monterrey - Nuevo Laredo
+    "Carr. 57D México - Querétaro - SLP - Matehuala - Monterrey - Nuevo Laredo": [
+        (19.4326, -99.1332),   # CDMX
+        (20.5888, -100.3899),  # Querétaro
+        (21.8818, -101.6833),  # San Luis Potosí
+        (23.6478, -100.6572),  # Matehuala
+        (25.6866, -100.3161),  # Monterrey
+        (27.4761, -99.5066),   # Nuevo Laredo
+    ],
+    # Carr. 45 Chihuahua - Cd. Juárez
+    "Carr. 45 Chihuahua - Cd. Juárez": [
+        (28.6353, -106.0889),  # Chihuahua
+        (30.0681, -106.8843),  # Villa Ahumada
+        (31.6904, -106.4245),  # Ciudad Juárez
+    ],
+    # Carr. 15 Hermosillo - Nogales
+    "Carr. 15 Hermosillo - Nogales": [
+        (29.0729, -110.9559),  # Hermosillo
+        (30.3285, -110.9742),  # Santa Ana
+        (31.3120, -110.9466),  # Nogales
+    ],
+    # Carr. 2 Mexicali - Tijuana
+    "Carr. 2 Mexicali - Tijuana": [
+        (32.6246, -115.4523),  # Mexicali
+        (32.5547, -116.4030),  # Tecate
+        (32.5149, -117.0382),  # Tijuana
+    ],
+    # Carr. 15 Culiacán - Nogales
+    "Carr. 15 Culiacán - Nogales": [
+        (24.7994, -107.3940),  # Culiacán
+        (25.5694, -108.4671),  # Guasave
+        (27.0700, -109.4430),  # Navojoa
+        (29.0729, -110.9559),  # Hermosillo
+        (30.3285, -110.9742),  # Santa Ana
+        (31.3120, -110.9466),  # Nogales
+    ],
+    # Carr. 85 Apodaca - Monterrey - Nuevo Laredo
+    "Carr. 85 Apodaca - Monterrey - Nuevo Laredo": [
+        (25.7817, -100.1885),  # Apodaca
+        (25.6866, -100.3161),  # Monterrey
+        (26.3538, -99.9947),   # Sabinas Hidalgo
+        (27.4761, -99.5066),   # Nuevo Laredo
+    ],
+    # Carr. 40D Saltillo - Monterrey - Nuevo Laredo
+    "Carr. 40D Saltillo - Monterrey - Nuevo Laredo": [
+        (25.4260, -101.0030),  # Saltillo
+        (25.6866, -100.3161),  # Monterrey
+        (27.4761, -99.5066),   # Nuevo Laredo
+    ],
+    # Carr. 15 Navolato - Nogales
+    "Carr. 15 Navolato - Nogales": [
+        (24.7676, -107.7023),  # Navolato
+        (25.5694, -108.4671),  # Guasave
+        (27.0700, -109.4430),  # Navojoa
+        (29.0729, -110.9559),  # Hermosillo
+        (31.3120, -110.9466),  # Nogales
+    ],
+    # Carr. 15 Cajeme - Nogales
+    "Carr. 15 Cajeme - Nogales": [
+        (27.4896, -109.9414),  # Cajeme
+        (29.0729, -110.9559),  # Hermosillo
+        (30.3285, -110.9742),  # Santa Ana
+        (31.3120, -110.9466),  # Nogales
+    ],
+    # Carr. 45 Satevo - Cd. Juárez
+    "Carr. 45 Satevo - Cd. Juárez": [
+        (28.0068, -106.0835),  # Satevo
+        (28.6353, -106.0889),  # Chihuahua
+        (30.0681, -106.8843),  # Villa Ahumada
+        (31.6904, -106.4245),  # Ciudad Juárez
+    ],
+    # Carr. 45 Cuauhtémoc - Cd. Juárez
+    "Carr. 45 Cuauhtémoc - Cd. Juárez": [
+        (28.4057, -106.8652),  # Cuauhtémoc
+        (28.6353, -106.0889),  # Chihuahua
+        (30.0681, -106.8843),  # Villa Ahumada
+        (31.6904, -106.4245),  # Ciudad Juárez
+    ],
+    # Carr. 57 SLP - Monterrey - Nuevo Laredo
+    "Carr. 57 SLP - Monterrey - Nuevo Laredo": [
+        (21.8818, -101.6833),  # San Luis Potosí
+        (23.6478, -100.6572),  # Matehuala
+        (25.6866, -100.3161),  # Monterrey
+        (27.4761, -99.5066),   # Nuevo Laredo
+    ],
+    # Carr. 180 Mérida - Progreso
+    "Carr. 180 Mérida - Progreso": [
+        (20.9674, -89.5926),   # Mérida
+        (21.2817, -89.6625),   # Progreso
+    ],
+    # Carr. 307 Puerto Morelos
+    "Carr. 307 Puerto Morelos": [
+        (21.1619, -86.8515),   # Cancún
+        (20.8464, -86.8742),   # Puerto Morelos
+    ],
+    # Carr. 57D Querétaro - Nuevo Laredo
+    "Carr. 57D Querétaro - SLP - Matehuala - Monterrey - Nuevo Laredo": [
+        (20.5888, -100.3899),  # Querétaro
+        (21.8818, -101.6833),  # San Luis Potosí
+        (23.6478, -100.6572),  # Matehuala
+        (25.6866, -100.3161),  # Monterrey
+        (27.4761, -99.5066),   # Nuevo Laredo
+    ],
+    # Carr. 15D Guadalajara - Tepic - Culiacán - Nogales
+    "Carr. 15D Guadalajara - Tepic - Culiacán - Nogales": [
+        (20.6597, -103.3496),  # Guadalajara
+        (21.5085, -104.8954),  # Tepic
+        (24.7994, -107.3940),  # Culiacán
+        (27.0700, -109.4430),  # Navojoa
+        (29.0729, -110.9559),  # Hermosillo
+        (31.3120, -110.9466),  # Nogales
+    ],
+}
+
+def get_waypoints(ruta_nombre, lat_orig, lon_orig, lat_dest, lon_dest):
+    """Busca waypoints por nombre de ruta; si no existe, usa línea recta."""
+    for key, wps in route_waypoints.items():
+        if key.lower() in ruta_nombre.lower() or ruta_nombre.lower() in key.lower():
+            return wps
+    return [(lat_orig, lon_orig), (lat_dest, lon_dest)]
+
+# =====================================================
 # SIDEBAR — FILTROS
 # =====================================================
 st.sidebar.header("⚙️ Filtros")
@@ -111,12 +236,6 @@ tipo_seleccion = st.sidebar.radio(
 mostrar_locales = st.sidebar.checkbox(
     "Incluir rutas locales (distancia = 0 km)",
     value=False,
-)
-
-usar_rutas_reales = st.sidebar.checkbox(
-    "🛣️ Usar rutas reales de carretera (OSRM)",
-    value=False,
-    help="Activa para trazar rutas por carretera. Requiere conexión a internet y tarda unos segundos.",
 )
 
 # --- Filtrar datos ---
@@ -149,42 +268,7 @@ rutas_plot = rutas_agg.dropna(subset=["lat_orig", "lon_orig", "lat_dest", "lon_d
 st.sidebar.markdown(f"**Rutas a graficar:** {len(rutas_plot)}")
 
 # =====================================================
-# OSRM — RUTAS REALES (solo si el usuario lo activa)
-# =====================================================
-def get_road_route(orig_lat, orig_lon, dest_lat, dest_lon):
-    url = (
-        f"http://router.project-osrm.org/route/v1/driving/"
-        f"{orig_lon},{orig_lat};{dest_lon},{dest_lat}"
-        f"?overview=full&geometries=polyline"
-    )
-    try:
-        resp = requests.get(url, timeout=10)
-        data = resp.json()
-        if data.get("code") == "Ok":
-            import polyline as pl
-            coords = pl.decode(data["routes"][0]["geometry"])
-            return coords
-    except Exception:
-        pass
-    return [(orig_lat, orig_lon), (dest_lat, dest_lon)]
-
-route_cache = {}
-if usar_rutas_reales:
-    pares_unicos = rutas_plot[["Localidad", "Aduana", "lat_orig", "lon_orig", "lat_dest", "lon_dest"]]\
-        .drop_duplicates(subset=["Localidad", "Aduana"])
-    progress = st.progress(0, text="Calculando rutas reales...")
-    total = len(pares_unicos)
-    for i, (_, par) in enumerate(pares_unicos.iterrows()):
-        key = (par["Localidad"], par["Aduana"])
-        route_cache[key] = get_road_route(
-            par["lat_orig"], par["lon_orig"],
-            par["lat_dest"], par["lon_dest"]
-        )
-        progress.progress((i + 1) / total, text=f"Ruta {i+1}/{total}: {par['Localidad']} → {par['Aduana']}")
-    progress.empty()
-
-# =====================================================
-# CONSTRUIR MAPA
+# CONSTRUIR MAPA con Scattermapbox (fondo real)
 # =====================================================
 def seguridad_color(idx):
     if idx <= 3:   return "green"
@@ -195,24 +279,22 @@ def seguridad_color(idx):
 fig_rutas = go.Figure()
 
 for _, row in rutas_plot.iterrows():
-    key = (row["Localidad"], row["Aduana"])
-    if usar_rutas_reales and key in route_cache:
-        coords = route_cache[key]
-        lats = [c[0] for c in coords]
-        lons = [c[1] for c in coords]
-    else:
-        lats = [row["lat_orig"], row["lat_dest"]]
-        lons = [row["lon_orig"], row["lon_dest"]]
-
+    coords = get_waypoints(
+        row["Ruta"],
+        row["lat_orig"], row["lon_orig"],
+        row["lat_dest"], row["lon_dest"],
+    )
+    lats = [c[0] for c in coords] + [None]
+    lons = [c[1] for c in coords] + [None]
     color = seguridad_color(row["Indice Seguridad"])
-    ancho = max(1, row["Embarques"] / rutas_plot["Embarques"].max() * 6)
+    ancho = max(2, row["Embarques"] / rutas_plot["Embarques"].max() * 8)
 
-    fig_rutas.add_trace(go.Scattergeo(
+    fig_rutas.add_trace(go.Scattermapbox(
         lon=lons,
         lat=lats,
         mode="lines",
         line=dict(width=ancho, color=color),
-        opacity=0.7,
+        opacity=0.75,
         hoverinfo="text",
         text=(
             f"{row['Localidad']} → {row['Aduana']}<br>"
@@ -226,45 +308,37 @@ for _, row in rutas_plot.iterrows():
     ))
 
 # Puntos origen
-fig_rutas.add_trace(go.Scattergeo(
-    lon=rutas_plot["lon_orig"],
-    lat=rutas_plot["lat_orig"],
+fig_rutas.add_trace(go.Scattermapbox(
+    lon=rutas_plot["lon_orig"].tolist(),
+    lat=rutas_plot["lat_orig"].tolist(),
     mode="markers",
-    marker=dict(size=6, color="steelblue", symbol="circle"),
-    text=rutas_plot["Localidad"],
+    marker=dict(size=8, color="steelblue"),
+    text=rutas_plot["Localidad"].tolist(),
     name="Origen",
     hoverinfo="text",
 ))
 
 # Puntos aduana
 aduanas_unicas = rutas_plot[["Aduana", "lat_dest", "lon_dest"]].drop_duplicates()
-fig_rutas.add_trace(go.Scattergeo(
-    lon=aduanas_unicas["lon_dest"],
-    lat=aduanas_unicas["lat_dest"],
+fig_rutas.add_trace(go.Scattermapbox(
+    lon=aduanas_unicas["lon_dest"].tolist(),
+    lat=aduanas_unicas["lat_dest"].tolist(),
     mode="markers",
-    marker=dict(size=12, color="crimson", symbol="star"),
-    text=aduanas_unicas["Aduana"],
+    marker=dict(size=14, color="crimson", symbol="star"),
+    text=aduanas_unicas["Aduana"].tolist(),
     name="Aduana",
     hoverinfo="text",
 ))
 
-fig_rutas.update_geos(
-    scope="north america",
-    showland=True,
-    landcolor="rgb(243, 243, 243)",
-    countrycolor="rgb(204, 204, 204)",
-    showlakes=True,
-    lakecolor="rgb(200, 220, 255)",
-    center=dict(lat=24, lon=-102),
-    projection_scale=3.5,
-    lonaxis_range=[-120, -85],
-    lataxis_range=[14, 34],
-)
-
 fig_rutas.update_layout(
+    mapbox=dict(
+        style="carto-positron",
+        center=dict(lat=24.5, lon=-103.5),
+        zoom=4.5,
+    ),
     height=700,
-    margin={"r": 0, "t": 30, "l": 0, "b": 0},
-    legend=dict(x=0.01, y=0.99),
+    margin={"r": 0, "t": 40, "l": 0, "b": 0},
+    legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.8)"),
     title=f"Rutas de Exportación — {tipo_seleccion} (color = índice de seguridad)",
 )
 
