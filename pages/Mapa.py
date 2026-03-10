@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
 
@@ -22,19 +23,15 @@ def load_data():
 
 df = load_data()
 
-# ── Sidebar: Filtros ─────────────────────────────────────────────────────────
+# ── Sidebar ──────────────────────────────────────────────────────────────────
 st.sidebar.header("🔧 Filtros")
 
 productos_disponibles = sorted(df["Producto"].dropna().unique())
-opciones_producto = ["Total"] + productos_disponibles
-
-segmento = st.sidebar.radio("Tipo de Carne", opciones_producto, index=0)
-
+segmento = st.sidebar.radio("Tipo de Carne", ["Total"] + productos_disponibles, index=0)
 metrica = st.sidebar.radio("Visualizar por", ["FOB (USD)", "Volumen (kg)"], index=0)
 
-# ── Filtrar datos ────────────────────────────────────────────────────────────
+# ── Filtrar ──────────────────────────────────────────────────────────────────
 df_filtered = df.copy()
-
 if segmento != "Total":
     df_filtered = df_filtered[df_filtered["Producto"] == segmento]
 
@@ -50,54 +47,52 @@ df_estado = (
     .sort_values("valor", ascending=False)
 )
 
-# ── Mapeo ISO 3166-2 ─────────────────────────────────────────────────────────
+# ── ISO mapping ──────────────────────────────────────────────────────────────
 estado_iso = {
     "Aguascalientes": "MX-AGU", "Baja California": "MX-BCN",
     "Baja California Sur": "MX-BCS", "Campeche": "MX-CAM",
     "Chiapas": "MX-CHP", "Chihuahua": "MX-CHH",
-    "Ciudad de Mexico": "MX-CMX", "Coahuila": "MX-COA",
+    "Ciudad de Mexico": "MX-CMX", "Ciudad de México": "MX-CMX",
+    "Coahuila": "MX-COA", "Coahuila de Zaragoza": "MX-COA",
     "Colima": "MX-COL", "Durango": "MX-DUR",
     "Guanajuato": "MX-GUA", "Guerrero": "MX-GRO",
     "Hidalgo": "MX-HID", "Jalisco": "MX-JAL",
-    "Mexico": "MX-MEX", "Michoacan": "MX-MIC",
+    "Mexico": "MX-MEX", "México": "MX-MEX",
+    "Michoacan": "MX-MIC", "Michoacán": "MX-MIC",
     "Morelos": "MX-MOR", "Nayarit": "MX-NAY",
-    "Nuevo Leon": "MX-NLE", "Oaxaca": "MX-OAX",
-    "Puebla": "MX-PUE", "Queretaro": "MX-QUE",
+    "Nuevo Leon": "MX-NLE", "Nuevo León": "MX-NLE",
+    "Oaxaca": "MX-OAX", "Puebla": "MX-PUE",
+    "Queretaro": "MX-QUE", "Querétaro": "MX-QUE",
     "Quintana Roo": "MX-ROO", "San Luis Potosi": "MX-SLP",
-    "Sinaloa": "MX-SIN", "Sonora": "MX-SON",
-    "Tabasco": "MX-TAB", "Tamaulipas": "MX-TAM",
-    "Tlaxcala": "MX-TLA", "Veracruz": "MX-VER",
-    "Yucatan": "MX-YUC", "Zacatecas": "MX-ZAC",
-    # Variantes con acento
-    "Michoacán": "MX-MIC", "Querétaro": "MX-QUE",
-    "Yucatán": "MX-YUC", "México": "MX-MEX",
-    "Nuevo León": "MX-NLE", "San Luis Potosí": "MX-SLP",
-    "Ciudad de México": "MX-CMX", "Coahuila de Zaragoza": "MX-COA",
-    "Veracruz de Ignacio de la Llave": "MX-VER",
+    "San Luis Potosí": "MX-SLP", "Sinaloa": "MX-SIN",
+    "Sonora": "MX-SON", "Tabasco": "MX-TAB",
+    "Tamaulipas": "MX-TAM", "Tlaxcala": "MX-TLA",
+    "Veracruz": "MX-VER", "Veracruz de Ignacio de la Llave": "MX-VER",
+    "Yucatan": "MX-YUC", "Yucatán": "MX-YUC",
+    "Zacatecas": "MX-ZAC",
 }
 
 df_estado["iso"] = df_estado["Estado"].map(estado_iso)
+df_mapa = df_estado.dropna(subset=["iso"])
 
-# ── Mapa coroplético (CORREGIDO) ─────────────────────────────────────────────
-fig_map = px.choropleth(
-    df_estado,
-    locations="iso",
-    color="valor",
-    hover_name="Estado",
-    hover_data={"valor": True, "iso": False},
-    color_continuous_scale="YlOrRd",
-    locationmode="ISO-3",
-    labels={"valor": label_valor},
-    title=f"{segmento} — {label_valor} por Estado",
-    fitbounds="locations",
-)
+# ── Mapa ─────────────────────────────────────────────────────────────────────
+fig_map = go.Figure(go.Choropleth(
+    locations=df_mapa["iso"],
+    z=df_mapa["valor"],
+    text=df_mapa["Estado"],
+    colorscale="YlOrRd",
+    colorbar_title=label_valor,
+    hovertemplate="<b>%{text}</b><br>" + label_valor + ": %{z:,.0f}<extra></extra>",
+    marker_line_color="white",
+    marker_line_width=0.5,
+))
 
-# ✅ update_layout en lugar de update_geos
 fig_map.update_layout(
-    margin={"r": 0, "t": 40, "l": 0, "b": 0},
+    title_text=f"{segmento} — {label_valor} por Estado",
+    margin=dict(r=0, t=40, l=0, b=0),
     height=560,
-    coloraxis_colorbar=dict(title=label_valor),
     geo=dict(
+        scope="north america",
         showcoastlines=True,
         coastlinecolor="lightgrey",
         showland=True,
@@ -106,14 +101,14 @@ fig_map.update_layout(
         showcountries=True,
         countrycolor="grey",
         showframe=False,
-        fitbounds="locations",
-        scope="north america",
+        lataxis_range=[14, 33],
+        lonaxis_range=[-118, -86],
     )
 )
 
 st.plotly_chart(fig_map, use_container_width=True)
 
-# ── Métricas resumen ─────────────────────────────────────────────────────────
+# ── KPIs ─────────────────────────────────────────────────────────────────────
 col1, col2, col3 = st.columns(3)
 total_val = df_estado["valor"].sum()
 top_estado = df_estado.iloc[0]["Estado"] if not df_estado.empty else "N/A"
@@ -126,12 +121,11 @@ with col2:
 with col3:
     st.metric("Estados activos", num_estados)
 
-# ── Tabla de datos por estado ────────────────────────────────────────────────
+# ── Tabla ────────────────────────────────────────────────────────────────────
 st.subheader("📊 Detalle por Estado")
-
 df_tabla = df_estado.drop(columns=["iso"]).copy()
 df_tabla.columns = ["Estado", label_valor]
-df_tabla = df_tabla.sort_values(label_valor, ascending=False).reset_index(drop=True)
+df_tabla = df_tabla.reset_index(drop=True)
 df_tabla.index += 1
 
 st.dataframe(
@@ -142,25 +136,15 @@ st.dataframe(
 
 # ── Bar chart top 15 ─────────────────────────────────────────────────────────
 st.subheader("📈 Top 15 Estados Exportadores")
-
 top15 = df_tabla.head(15)
 fig_bar = px.bar(
-    top15,
-    x="Estado",
-    y=label_valor,
-    color=label_valor,
-    color_continuous_scale="YlOrRd",
+    top15, x="Estado", y=label_valor,
+    color=label_valor, color_continuous_scale="YlOrRd",
     text_auto=".2s",
-    title=f"Top 15 Estados — {segmento} | {label_valor}"
+    title=f"Top 15 — {segmento} | {label_valor}"
 )
-fig_bar.update_layout(
-    xaxis_tickangle=-35,
-    showlegend=False,
-    height=450,
-    coloraxis_showscale=False
-)
+fig_bar.update_layout(xaxis_tickangle=-35, showlegend=False, height=450, coloraxis_showscale=False)
 st.plotly_chart(fig_bar, use_container_width=True)
 
-# ── Footer ───────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.caption(f"Fuente: Base de datos exportaciones carne México → EE.UU. | {datetime.today().strftime('%d/%m/%Y')}")
