@@ -277,3 +277,15 @@ perf_display["% Fresco"]        = perf_display["% Fresco"].map("{:.1%}".format)
 perf_display["% Congelado"]     = perf_display["% Congelado"].map("{:.1%}".format)
 perf_display["% Cerdo"]         = perf_display["% Cerdo"].map("{:.1%}".format)
 st.dataframe(perf_display, use_container_width=True, hide_index=True)
+
+st.subheader("🔍 Empresas por Segmento")
+seg_filtro = st.selectbox("Ver empresas del segmento:", seg_order)
+empresas_seg = agg[agg["Segmento"] == seg_filtro][
+    ["Exportador","embarques","valor_total","volumen_total",
+     "precio_prom_kg","distancia_prom","riesgo_prom","aduanas_unicas"]
+].sort_values("valor_total", ascending=False).reset_index(drop=True)
+empresas_seg.index += 1
+empresas_seg["valor_total"]   = empresas_seg["valor_total"].map("${:,.0f}".format)
+empresas_seg["volumen_total"] = empresas_seg["volumen_total"].map("{:,.0f} kg".format)
+empresas_seg["precio_prom_kg"]= empresas_seg["precio_prom_kg"].map("${:,.2f}".format)
+st.dataframe(empresas_seg, use_container_width=True)
