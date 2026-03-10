@@ -22,7 +22,7 @@ df = pd.read_csv(
     encoding="utf-8-sig"
 )
 df.columns = df.columns.str.strip()
-df = df[df["Exportador"].str.strip() != "NO DETERMINADO"]
+df = df[~df["Exportador"].str.strip().isin(["NO DETERMINADO", "Sin Nombre"])]
 
 tipo_map = {
     "Carne Bovino Fresca/Refrigerada": "Bovino_Fresco",
