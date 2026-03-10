@@ -1,84 +1,114 @@
+# pages/Clustering.py
+
+import os
+import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-from sklearn.metrics import silhouette_score
 import plotly.graph_objects as go
 import plotly.express as px
-import plotly.io as pio
-import json
 import warnings
 warnings.filterwarnings("ignore")
 
-df = pd.read_csv("empresas_exportadoras.csv", encoding="utf-8-sig")
+st.set_page_config(page_title="Clustering de Empresas", layout="wide")
+st.title("🔬 Segmentación de Empresas Exportadoras")
+
+# --- Cargar datos ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+df = pd.read_csv(
+    os.path.join(BASE_DIR, "..", "empresas_exportadoras.csv"),
+    encoding="utf-8-sig"
+)
 df.columns = df.columns.str.strip()
 df = df[df["Exportador"].str.strip() != "NO DETERMINADO"]
 
 tipo_map = {
     "Carne Bovino Fresca/Refrigerada": "Bovino_Fresco",
-    "Carne Bovino Congelado": "Bovino_Congelado",
-    "Carne Cerdo": "Cerdo",
+    "Carne Bovino Congelado":          "Bovino_Congelado",
+    "Carne Cerdo":                     "Cerdo",
 }
 df["Tipo Carne"] = df["Producto"].str.strip().map(tipo_map).fillna("Otro")
 
-agg = df.groupby("Exportador").agg(
-    embarques        = ("Ordinal", "count"),
-    valor_total      = ("US FOB", "sum"),
-    volumen_total    = ("Volumen (kg)", "sum"),
-    distancia_prom   = ("Distancia Frontera", "mean"),
-    riesgo_prom      = ("Indice Seguridad", "mean"),
-    aduanas_unicas   = ("Aduana", "nunique"),
-    estados_unicos   = ("Estado", "nunique"),
-    n_productos      = ("Tipo Carne", "nunique"),
-).reset_index()
-agg["precio_prom_kg"] = agg["valor_total"] / agg["volumen_total"]
+# =====================================================
+# SIDEBAR
+# =====================================================
+st.sidebar.header("⚙️ Parámetros del Modelo")
+n_clusters = st.sidebar.slider("Número de clusters (k)", min_value=2, max_value=8, value=4)
+excluir_micro = st.sidebar.checkbox("Excluir empresas sin embarques (Micro)", value=False)
 
-pivot_carne = df.groupby(["Exportador","Tipo Carne"])["US FOB"].sum().unstack(fill_value=0)
-pivot_carne = pivot_carne.div(pivot_carne.sum(axis=1), axis=0)
-for col in ["Bovino_Fresco","Bovino_Congelado","Cerdo"]:
-    if col not in pivot_carne.columns:
-        pivot_carne[col] = 0
-agg = agg.merge(pivot_carne[["Bovino_Fresco","Bovino_Congelado","Cerdo"]].rename(columns={
-    "Bovino_Fresco": "pct_bovino_fresco",
-    "Bovino_Congelado": "pct_bovino_congelado",
-    "Cerdo": "pct_cerdo",
-}), on="Exportador", how="left").fillna(0)
+# =====================================================
+# AGREGACIÓN POR EMPRESA
+# =====================================================
+@st.cache_data
+def construir_features(df_raw, excluir_micro_flag):
+    agg = df_raw.groupby("Exportador").agg(
+        embarques      = ("Ordinal", "count"),
+        valor_total    = ("US FOB", "sum"),
+        volumen_total  = ("Volumen (kg)", "sum"),
+        distancia_prom = ("Distancia Frontera", "mean"),
+        riesgo_prom    = ("Indice Seguridad", "mean"),
+        aduanas_unicas = ("Aduana", "nunique"),
+        estados_unicos = ("Estado", "nunique"),
+        n_productos    = ("Tipo Carne", "nunique"),
+    ).reset_index()
+    agg["precio_prom_kg"] = (agg["valor_total"] / agg["volumen_total"])\
+        .replace([np.inf, -np.inf], 0).fillna(0)
 
+    pivot = df_raw.groupby(["Exportador","Tipo Carne"])["US FOB"].sum().unstack(fill_value=0)
+    pivot = pivot.div(pivot.sum(axis=1), axis=0)
+    for col in ["Bovino_Fresco","Bovino_Congelado","Cerdo"]:
+        if col not in pivot.columns:
+            pivot[col] = 0
+    agg = agg.merge(
+        pivot[["Bovino_Fresco","Bovino_Congelado","Cerdo"]].rename(columns={
+            "Bovino_Fresco":    "pct_fresco",
+            "Bovino_Congelado": "pct_congelado",
+            "Cerdo":            "pct_cerdo",
+        }), on="Exportador", how="left"
+    ).fillna(0)
+
+    if excluir_micro_flag:
+        agg = agg[agg["embarques"] > 0]
+    return agg
+
+agg = construir_features(df, excluir_micro)
+
+# =====================================================
+# MODELO K-MEANS
+# =====================================================
 features = ["embarques","valor_total","volumen_total","precio_prom_kg",
             "distancia_prom","riesgo_prom","aduanas_unicas","estados_unicos",
-            "n_productos","pct_bovino_fresco","pct_bovino_congelado","pct_cerdo"]
+            "n_productos","pct_fresco","pct_congelado","pct_cerdo"]
+
 X = agg[features].copy()
+for col in ["embarques","valor_total","volumen_total"]:
+    X[col] = np.log1p(X[col])
+
 scaler = StandardScaler()
 Xs = scaler.fit_transform(X)
 
-# Forzar k=4 para segmentación más accionable (ignorar outlier dominante)
-# Usar log-transform para suavizar outliers
-X_log = X.copy()
-for col in ["embarques","valor_total","volumen_total"]:
-    X_log[col] = np.log1p(X_log[col])
-Xs_log = scaler.fit_transform(X_log)
-
-sil_scores = {}
-for k in range(2,8):
-    km = KMeans(n_clusters=k, random_state=42, n_init=20)
-    lbl = km.fit_predict(Xs_log)
-    sil_scores[k] = silhouette_score(Xs_log, lbl)
-    
-best_k = max(sil_scores, key=sil_scores.get)
-print("Silhouette scores:", sil_scores)
-print("Mejor k:", best_k)
-
-km_final = KMeans(n_clusters=best_k, random_state=42, n_init=20)
-agg["Cluster"] = km_final.fit_predict(Xs_log)
+km = KMeans(n_clusters=n_clusters, random_state=42, n_init=20)
+agg["Cluster"] = km.fit_predict(Xs)
 
 pca = PCA(n_components=2, random_state=42)
-coords = pca.fit_transform(Xs_log)
-agg["PC1"] = coords[:,0]
-agg["PC2"] = coords[:,1]
+coords = pca.fit_transform(Xs)
+agg["PC1"] = coords[:, 0]
+agg["PC2"] = coords[:, 1]
 
-# Nombrar clusters por valor total mediano
-perfil = agg.groupby("Cluster").agg(
+# Ordenar clusters por valor mediano y asignar etiquetas
+orden = agg.groupby("Cluster")["valor_total"].median().sort_values()
+nombres_seg = ["Micro","Pequeño","Mediano","Grande","Nivel 5","Nivel 6","Nivel 7","Nivel 8"]
+nombre_map  = {c: nombres_seg[i] for i, c in enumerate(orden.index)}
+agg["Segmento"] = agg["Cluster"].map(nombre_map)
+seg_order = [nombres_seg[i] for i in range(n_clusters)]
+
+COLORS = px.colors.qualitative.Set2[:n_clusters]
+cmap   = dict(zip(seg_order, COLORS))
+
+# Perfil por segmento
+perfil = agg.groupby("Segmento").agg(
     n_empresas    = ("Exportador", "count"),
     embarques_med = ("embarques", "median"),
     valor_med     = ("valor_total", "median"),
@@ -87,37 +117,34 @@ perfil = agg.groupby("Cluster").agg(
     distancia_med = ("distancia_prom", "median"),
     riesgo_med    = ("riesgo_prom", "median"),
     aduanas_med   = ("aduanas_unicas", "median"),
-    pct_fresco    = ("pct_bovino_fresco", "mean"),
-    pct_congelado = ("pct_bovino_congelado", "mean"),
+    pct_fresco    = ("pct_fresco", "mean"),
+    pct_congelado = ("pct_congelado", "mean"),
     pct_cerdo     = ("pct_cerdo", "mean"),
-).reset_index().sort_values("valor_med")
+).reset_index()
 
-# Asignar etiquetas por ranking de valor
-labels_map = {}
-nombres = ["Micro\nExportador", "Exportador\nPequeño", "Exportador\nMediano", "Gran\nExportador",
-           "Exportador\nNivel 5", "Exportador\nNivel 6", "Exportador\nNivel 7"]
-for i, row in enumerate(perfil.itertuples()):
-    labels_map[row.Cluster] = nombres[i]
+# =====================================================
+# KPIs
+# =====================================================
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("🏢 Empresas analizadas", f"{len(agg):,}")
+k2.metric("🔬 Clusters generados",  f"{n_clusters}")
+k3.metric("💵 Valor total",         f"${agg['valor_total'].sum()/1e6:,.1f}M USD")
+k4.metric("🚛 Embarques totales",   f"{agg['embarques'].sum():,}")
 
-agg["Segmento"] = agg["Cluster"].map(labels_map)
-perfil["Segmento"] = perfil["Cluster"].map(labels_map)
-print(perfil[["Segmento","n_empresas","embarques_med","valor_med","distancia_med","riesgo_med"]].to_string())
+st.divider()
 
-# ============================================================
-# CHARTS
-# ============================================================
-COLORS = px.colors.qualitative.Set2[:best_k]
-cluster_color = {seg: COLORS[i] for i, seg in enumerate(perfil["Segmento"])}
+# =====================================================
+# SECCIÓN 1 — PCA SCATTER
+# =====================================================
+st.subheader("📍 Distribución de Empresas (PCA 2D)")
 
-# 1. Scatter PCA
-fig1 = go.Figure()
-for seg in agg["Segmento"].unique():
+fig_pca = go.Figure()
+for seg in seg_order:
     sub = agg[agg["Segmento"] == seg]
-    fig1.add_trace(go.Scatter(
+    fig_pca.add_trace(go.Scatter(
         x=sub["PC1"], y=sub["PC2"],
-        mode="markers",
-        name=seg.replace("\n"," "),
-        marker=dict(size=9, opacity=0.75, color=cluster_color[seg]),
+        mode="markers", name=seg,
+        marker=dict(size=9, opacity=0.75, color=cmap[seg]),
         customdata=sub[["Exportador","embarques","valor_total","aduanas_unicas"]].values,
         hovertemplate=(
             "<b>%{customdata[0]}</b><br>"
@@ -126,119 +153,136 @@ for seg in agg["Segmento"].unique():
             "Aduanas: %{customdata[3]}<extra></extra>"
         ),
     ))
-fig1.update_layout(
-    title={"text": "Clusters de Empresas Exportadoras (PCA)<br>"
-                   "<span style='font-size:15px;font-weight:normal'>K-Means con log-transform | Agrupadas por perfil exportador</span>"},
+fig_pca.update_layout(
+    height=500,
+    xaxis_title="Componente Principal 1",
+    yaxis_title="Componente Principal 2",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+    plot_bgcolor="white",
+    xaxis=dict(showgrid=True, gridcolor="#eeeeee"),
+    yaxis=dict(showgrid=True, gridcolor="#eeeeee"),
 )
-fig1.update_xaxes(title_text="Componente 1")
-fig1.update_yaxes(title_text="Componente 2")
-fig1.update_traces(cliponaxis=False)
-fig1.write_image("cluster_pca.png")
-with open("cluster_pca.png.meta.json","w") as f:
-    json.dump({"caption":"Dispersión PCA de empresas por cluster",
-               "description":"Scatter plot en espacio PCA mostrando los clusters de empresas exportadoras de carne"}, f)
+st.plotly_chart(fig_pca, use_container_width=True)
 
-# 2. Bubble: Valor vs Embarques por cluster
-fig2 = go.Figure()
-for seg in agg["Segmento"].unique():
-    sub = agg[agg["Segmento"] == seg]
-    fig2.add_trace(go.Scatter(
-        x=sub["embarques"],
-        y=sub["valor_total"] / 1e6,
-        mode="markers",
-        name=seg.replace("\n"," "),
-        marker=dict(
-            size=np.sqrt(sub["volumen_total"] / sub["volumen_total"].max()) * 40 + 6,
-            opacity=0.7,
-            color=cluster_color[seg],
-        ),
+st.divider()
+
+# =====================================================
+# SECCIÓN 2 — BUBBLE: Embarques vs Valor
+# =====================================================
+st.subheader("💬 Embarques vs Valor (tamaño = volumen)")
+
+vol_max = agg["volumen_total"].replace(0, np.nan).max()
+fig_bub = go.Figure()
+for seg in seg_order:
+    sub = agg[agg["Segmento"] == seg].copy()
+    sub["sz"] = (np.sqrt(sub["volumen_total"].clip(lower=0) / vol_max) * 40 + 5).fillna(5)
+    fig_bub.add_trace(go.Scatter(
+        x=sub["embarques"], y=sub["valor_total"] / 1e6,
+        mode="markers", name=seg,
+        marker=dict(size=sub["sz"].tolist(), opacity=0.65, color=cmap[seg]),
         customdata=sub[["Exportador","distancia_prom","riesgo_prom"]].values,
         hovertemplate=(
             "<b>%{customdata[0]}</b><br>"
             "Embarques: %{x:,}<br>"
-            "Valor: $%{y:.2f}M<br>"
+            "Valor: $%{y:.2f}M USD<br>"
             "Dist. media: %{customdata[1]:,.0f} km<br>"
             "Riesgo: %{customdata[2]:.1f}<extra></extra>"
         ),
     ))
-fig2.update_layout(
-    title={"text": "Embarques vs Valor por Segmento<br>"
-                   "<span style='font-size:15px;font-weight:normal'>Tamaño = volumen exportado (kg)</span>"},
+fig_bub.update_layout(
+    height=500,
+    xaxis=dict(title="Embarques", type="log", showgrid=True, gridcolor="#eeeeee"),
+    yaxis=dict(title="Valor (USD M)", type="log", showgrid=True, gridcolor="#eeeeee"),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+    plot_bgcolor="white",
 )
-fig2.update_xaxes(title_text="Embarques", type="log")
-fig2.update_yaxes(title_text="Valor (USD M)", type="log")
-fig2.update_traces(cliponaxis=False)
-fig2.write_image("cluster_bubble.png")
-with open("cluster_bubble.png.meta.json","w") as f:
-    json.dump({"caption":"Embarques vs Valor por segmento de empresa",
-               "description":"Bubble chart log-log de embarques vs valor total, tamaño proporcional al volumen"}, f)
+st.plotly_chart(fig_bub, use_container_width=True)
 
-# 3. Radar de perfil por cluster
-from plotly.subplots import make_subplots
+st.divider()
 
-radar_vars = ["embarques_med","valor_med","distancia_med","riesgo_med","aduanas_med","pct_fresco","pct_congelado","pct_cerdo"]
-radar_labels = ["Embarques","Valor","Distancia","Riesgo","Aduanas","% Fresco","% Congelado","% Cerdo"]
+# =====================================================
+# SECCIÓN 3 — RADAR + BARRAS (lado a lado)
+# =====================================================
+st.subheader("📊 Perfil por Segmento")
 
-# Normalizar 0-1 para radar
-perfil_norm = perfil.copy()
-for col in radar_vars:
-    mn, mx = perfil[col].min(), perfil[col].max()
-    perfil_norm[col] = (perfil[col] - mn) / (mx - mn) if mx > mn else 0
+col1, col2 = st.columns(2)
 
-fig3 = go.Figure()
-for i, row in perfil_norm.iterrows():
-    seg = row["Segmento"].replace("\n"," ")
-    vals = [row[v] for v in radar_vars] + [row[radar_vars[0]]]
-    lbls = radar_labels + [radar_labels[0]]
-    fig3.add_trace(go.Scatterpolar(
-        r=vals, theta=lbls,
-        fill="toself", name=seg,
-        line_color=COLORS[list(perfil_norm["Segmento"]).index(row["Segmento"])],
-        opacity=0.6,
+# Radar
+with col1:
+    radar_vars   = ["embarques_med","valor_med","distancia_med","riesgo_med",
+                    "aduanas_med","pct_fresco","pct_congelado","pct_cerdo"]
+    radar_labels = ["Embarques","Valor","Distancia","Riesgo",
+                    "Aduanas","% Fresco","% Congelado","% Cerdo"]
+    pn = perfil.set_index("Segmento")[radar_vars].copy()
+    for col_r in radar_vars:
+        mn, mx = pn[col_r].min(), pn[col_r].max()
+        pn[col_r] = (pn[col_r] - mn) / (mx - mn) if mx > mn else 0
+
+    fig_radar = go.Figure()
+    for i, seg in enumerate(seg_order):
+        if seg not in pn.index:
+            continue
+        vals = pn.loc[seg, radar_vars].tolist() + [pn.loc[seg, radar_vars[0]]]
+        lbls = radar_labels + [radar_labels[0]]
+        fig_radar.add_trace(go.Scatterpolar(
+            r=vals, theta=lbls, fill="toself", name=seg,
+            line_color=COLORS[i], opacity=0.55,
+        ))
+    fig_radar.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+        height=450,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5),
+        title="Perfil normalizado (0-1)",
+    )
+    st.plotly_chart(fig_radar, use_container_width=True)
+
+# Barras: nº empresas
+with col2:
+    perf_ord = perfil.set_index("Segmento").reindex(seg_order).reset_index()
+    fig_bar = go.Figure(go.Bar(
+        x=perf_ord["Segmento"],
+        y=perf_ord["n_empresas"],
+        marker_color=COLORS,
+        text=perf_ord["n_empresas"],
+        textposition="outside",
     ))
-fig3.update_layout(
-    polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
-    title={"text": "Perfil Normalizado por Segmento<br>"
-                   "<span style='font-size:15px;font-weight:normal'>Variables clave normalizadas 0-1</span>"},
-    legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
-)
-fig3.write_image("cluster_radar.png")
-with open("cluster_radar.png.meta.json","w") as f:
-    json.dump({"caption":"Radar de perfil normalizado por segmento",
-               "description":"Gráfico de radar comparando los perfiles de cada cluster en variables clave"}, f)
+    fig_bar.update_layout(
+        height=450,
+        title="Empresas por segmento",
+        xaxis_title="Segmento",
+        yaxis_title="Nº Empresas",
+        showlegend=False,
+        plot_bgcolor="white",
+        yaxis=dict(showgrid=True, gridcolor="#eeeeee"),
+    )
+    st.plotly_chart(fig_bar, use_container_width=True)
 
-# 4. Barras: distribución de empresas y valor por segmento
-fig4 = go.Figure()
-segs_ord = perfil["Segmento"].str.replace("\n"," ").tolist()
-fig4.add_trace(go.Bar(
-    x=segs_ord,
-    y=perfil["n_empresas"],
-    name="Empresas",
-    marker_color=COLORS[:best_k],
-    text=perfil["n_empresas"],
-    textposition="outside",
-    yaxis="y",
-))
-fig4.update_layout(
-    title={"text": "Empresas y Valor Mediano por Segmento<br>"
-                   "<span style='font-size:15px;font-weight:normal'>De menor a mayor tamaño exportador</span>"},
-    xaxis_title="Segmento",
-    yaxis_title="Nº Empresas",
-    showlegend=False,
-)
-fig4.update_traces(cliponaxis=False)
-fig4.write_image("cluster_dist.png")
-with open("cluster_dist.png.meta.json","w") as f:
-    json.dump({"caption":"Distribución de empresas por segmento exportador",
-               "description":"Barras mostrando cuántas empresas hay en cada cluster"}, f)
+st.divider()
 
-# Guardar CSV final
-agg[["Exportador","Segmento","Cluster","embarques","valor_total","volumen_total",
-     "precio_prom_kg","distancia_prom","riesgo_prom","aduanas_unicas","estados_unicos"]]\
-    .sort_values(["Cluster","valor_total"], ascending=[True,False])\
-    .to_csv("clusters_empresas.csv", index=False, encoding="utf-8-sig")
+# =====================================================
+# SECCIÓN 4 — TABLA DETALLE
+# =====================================================
+st.subheader("📋 Resumen por Segmento")
+perf_display = perf_ord[["Segmento","n_empresas","embarques_med","valor_med",
+                          "distancia_med","riesgo_med","aduanas_med",
+                          "pct_fresco","pct_congelado","pct_cerdo"]].copy()
+perf_display.columns = ["Segmento","Empresas","Embarques (med)","Valor (med USD)",
+                        "Distancia (km)","Riesgo","Aduanas","% Fresco","% Congelado","% Cerdo"]
+perf_display["Valor (med USD)"]  = perf_display["Valor (med USD)"].map("${:,.0f}".format)
+perf_display["Distancia (km)"]   = perf_display["Distancia (km)"].map("{:,.0f}".format)
+perf_display["% Fresco"]         = perf_display["% Fresco"].map("{:.1%}".format)
+perf_display["% Congelado"]      = perf_display["% Congelado"].map("{:.1%}".format)
+perf_display["% Cerdo"]          = perf_display["% Cerdo"].map("{:.1%}".format)
+st.dataframe(perf_display, use_container_width=True, hide_index=True)
 
-print("✅ Todo generado")
-print(perfil[["Segmento","n_empresas","embarques_med","valor_med","distancia_med","riesgo_med","aduanas_med"]].to_string())
+st.subheader("🔍 Empresas por Segmento")
+seg_filtro = st.selectbox("Ver empresas del segmento:", seg_order)
+empresas_seg = agg[agg["Segmento"] == seg_filtro][
+    ["Exportador","embarques","valor_total","volumen_total",
+     "precio_prom_kg","distancia_prom","riesgo_prom","aduanas_unicas"]
+].sort_values("valor_total", ascending=False).reset_index(drop=True)
+empresas_seg.index += 1
+empresas_seg["valor_total"]   = empresas_seg["valor_total"].map("${:,.0f}".format)
+empresas_seg["volumen_total"] = empresas_seg["volumen_total"].map("{:,.0f} kg".format)
+empresas_seg["precio_prom_kg"]= empresas_seg["precio_prom_kg"].map("${:,.2f}".format)
+st.dataframe(empresas_seg, use_container_width=True)
