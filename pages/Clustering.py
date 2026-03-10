@@ -229,7 +229,7 @@ with col1:
         lbls = radar_labels + [radar_labels[0]]
         fig_radar.add_trace(go.Scatterpolar(
             r=vals, theta=lbls, fill="toself", name=seg,
-            line_color=COLORS[i], opacity=0.8,
+            line_color=COLORS[i], opacity=1,
         ))
     fig_radar.update_layout(
         polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
