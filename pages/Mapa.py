@@ -4,7 +4,6 @@ import pandas as pd
 import plotly.express as px
 import requests
 import json
-from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Mapa de Exportaciones", layout="wide")
 st.title("🗺️ Exportaciones de Carne por Estado")
@@ -75,29 +74,21 @@ def cargar_geojson():
 mx_geo = cargar_geojson()
 
 # =====================================================
-# FILTROS EN PÁGINA
+# SIDEBAR — FILTROS
 # =====================================================
-st.subheader("⚙️ Filtros")
+st.sidebar.header("⚙️ Filtros")
 
-col_f1, col_f2 = st.columns([1, 1])
+tipo_seleccion = st.sidebar.radio(
+    "Tipo de carne",
+    options=["Total", "Bovino Fresco/Refrigerado", "Bovino Congelado", "Cerdo"],
+    index=0,
+)
 
-with col_f1:
-    tipo_seleccion = st.radio(
-        "Tipo de carne",
-        options=["Total", "Bovino Fresco/Refrigerado", "Bovino Congelado", "Cerdo"],
-        index=0,
-        horizontal=True,
-    )
-
-with col_f2:
-    variable = st.radio(
-        "Variable a visualizar en el mapa",
-        options=["Valor (USD M)", "Volumen (t)"],
-        index=0,
-        horizontal=True,
-    )
-
-st.divider()
+variable = st.sidebar.radio(
+    "Variable a visualizar en el mapa",
+    options=["Valor (USD M)", "Volumen (t)"],
+    index=0,
+)
 
 # --- Filtrar datos ---
 df_filtrado = df.copy()
@@ -165,80 +156,75 @@ fig_mapa.update_layout(
 st.plotly_chart(fig_mapa, use_container_width=True)
 
 # =====================================================
-# TRES GRÁFICAS DE BARRAS — TOP 10
+# TRES GRÁFICAS DE BARRAS — TOP 10 (una debajo de otra)
 # =====================================================
 st.subheader("📊 Top 10 Estados")
 
-col1, col2, col3 = st.columns(3)
-
 # --- Top 10 por Embarques ---
-with col1:
-    top_emb = agg_estado.nlargest(10, "Embarques").sort_values("Embarques", ascending=True)
-    fig_emb = px.bar(
-        top_emb,
-        x="Embarques",
-        y="Estado",
-        orientation="h",
-        color="Embarques",
-        color_continuous_scale="Purples",
-        title="🚛 Top 10 por Embarques",
-        text="Embarques",
-    )
-    fig_emb.update_traces(texttemplate="%{text:,}", textposition="outside")
-    fig_emb.update_layout(
-        height=420,
-        showlegend=False,
-        coloraxis_showscale=False,
-        margin={"r": 60, "t": 50, "l": 10, "b": 10},
-        xaxis_title="",
-        yaxis_title="",
-    )
-    st.plotly_chart(fig_emb, use_container_width=True)
+top_emb = agg_estado.nlargest(10, "Embarques").sort_values("Embarques", ascending=True)
+fig_emb = px.bar(
+    top_emb,
+    x="Embarques",
+    y="Estado",
+    orientation="h",
+    color="Embarques",
+    color_continuous_scale="Purples",
+    title="🚛 Top 10 por Embarques",
+    text="Embarques",
+)
+fig_emb.update_traces(texttemplate="%{text:,}", textposition="outside")
+fig_emb.update_layout(
+    height=400,
+    showlegend=False,
+    coloraxis_showscale=False,
+    margin={"r": 80, "t": 50, "l": 10, "b": 10},
+    xaxis_title="",
+    yaxis_title="",
+)
+st.plotly_chart(fig_emb, use_container_width=True)
 
 # --- Top 10 por Valor ---
-with col2:
-    top_val = agg_estado.nlargest(10, "Valor (USD M)").sort_values("Valor (USD M)", ascending=True)
-    fig_val = px.bar(
-        top_val,
-        x="Valor (USD M)",
-        y="Estado",
-        orientation="h",
-        color="Valor (USD M)",
-        color_continuous_scale="YlOrRd",
-        title="💵 Top 10 por Valor (USD M)",
-        text="Valor (USD M)",
-    )
-    fig_val.update_traces(texttemplate="%{text:,.1f}", textposition="outside")
-    fig_val.update_layout(
-        height=420,
-        showlegend=False,
-        coloraxis_showscale=False,
-        margin={"r": 60, "t": 50, "l": 10, "b": 10},
-        xaxis_title="",
-        yaxis_title="",
-    )
-    st.plotly_chart(fig_val, use_container_width=True)
+top_val = agg_estado.nlargest(10, "Valor (USD M)").sort_values("Valor (USD M)", ascending=True)
+fig_val = px.bar(
+    top_val,
+    x="Valor (USD M)",
+    y="Estado",
+    orientation="h",
+    color="Valor (USD M)",
+    color_continuous_scale="YlOrRd",
+    title="💵 Top 10 por Valor (USD M)",
+    text="Valor (USD M)",
+)
+fig_val.update_traces(texttemplate="%{text:,.1f}", textposition="outside")
+fig_val.update_layout(
+    height=400,
+    showlegend=False,
+    coloraxis_showscale=False,
+    margin={"r": 80, "t": 50, "l": 10, "b": 10},
+    xaxis_title="",
+    yaxis_title="",
+)
+st.plotly_chart(fig_val, use_container_width=True)
 
 # --- Top 10 por Volumen ---
-with col3:
-    top_vol = agg_estado.nlargest(10, "Volumen (t)").sort_values("Volumen (t)", ascending=True)
-    fig_vol = px.bar(
-        top_vol,
-        x="Volumen (t)",
-        y="Estado",
-        orientation="h",
-        color="Volumen (t)",
-        color_continuous_scale="Blues",
-        title="⚖️ Top 10 por Volumen (t)",
-        text="Volumen (t)",
-    )
-    fig_vol.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
-    fig_vol.update_layout(
-        height=420,
-        showlegend=False,
-        coloraxis_showscale=False,
-        margin={"r": 60, "t": 50, "l": 10, "b": 10},
-        xaxis_title="",
-        yaxis_title="",
-    )
-    st.plotly_chart(fig_vol, use_container_width=True)
+top_vol = agg_estado.nlargest(10, "Volumen (t)").sort_values("Volumen (t)", ascending=True)
+fig_vol = px.bar(
+    top_vol,
+    x="Volumen (t)",
+    y="Estado",
+    orientation="h",
+    color="Volumen (t)",
+    color_continuous_scale="Blues",
+    title="⚖️ Top 10 por Volumen (t)",
+    text="Volumen (t)",
+)
+fig_vol.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+fig_vol.update_layout(
+    height=400,
+    showlegend=False,
+    coloraxis_showscale=False,
+    margin={"r": 80, "t": 50, "l": 10, "b": 10},
+    xaxis_title="",
+    yaxis_title="",
+)
+st.plotly_chart(fig_vol, use_container_width=True)
