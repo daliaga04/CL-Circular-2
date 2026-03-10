@@ -3,7 +3,6 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
-# ── Configuración de la página ──────────────────────────────────────────────
 st.set_page_config(
     page_title="Exportaciones de Carne México → EE.UU.",
     page_icon="🥩",
@@ -17,15 +16,8 @@ st.markdown("Visualización por estado de origen del exportador")
 @st.cache_data
 def load_data():
     df = pd.read_csv("empresas_exportadoras.csv", encoding="utf-8-sig")
-
-    # Convertir fecha (Excel serial number a fecha real)
     df["Fecha"] = pd.to_datetime(df["Fecha"], origin="1899-12-30", unit="D")
-    df["Año"] = df["Fecha"].dt.year
-    df["Mes"] = df["Fecha"].dt.month
-
-    # Limpiar columna Producto
     df["Producto"] = df["Producto"].str.strip()
-
     return df
 
 df = load_data()
@@ -33,40 +25,21 @@ df = load_data()
 # ── Sidebar: Filtros ─────────────────────────────────────────────────────────
 st.sidebar.header("🔧 Filtros")
 
-# Segmento de carne
 productos_disponibles = sorted(df["Producto"].dropna().unique())
 opciones_producto = ["Total"] + productos_disponibles
 
-segmento = st.sidebar.radio(
-    "Tipo de Carne",
-    opciones_producto,
-    index=0
-)
+segmento = st.sidebar.radio("Tipo de Carne", opciones_producto, index=0)
 
-# Métrica
-metrica = st.sidebar.radio(
-    "Visualizar por",
-    ["FOB (USD)", "Volumen (kg)"],
-    index=0
-)
-
-# Filtro de año
-años = sorted(df["Año"].dropna().unique())
-año_sel = st.sidebar.multiselect(
-    "Año(s)",
-    options=años,
-    default=años
-)
+metrica = st.sidebar.radio("Visualizar por", ["FOB (USD)", "Volumen (kg)"], index=0)
 
 # ── Filtrar datos ────────────────────────────────────────────────────────────
-df_filtered = df[df["Año"].isin(año_sel)].copy()
+df_filtered = df.copy()
 
 if segmento != "Total":
     df_filtered = df_filtered[df_filtered["Producto"] == segmento]
 
 col_valor = "US FOB" if metrica == "FOB (USD)" else "Volumen (kg)"
 label_valor = "US FOB (USD)" if metrica == "FOB (USD)" else "Volumen (kg)"
-formato_hover = "$,.0f" if metrica == "FOB (USD)" else ",.0f"
 
 # ── Agrupar por Estado ───────────────────────────────────────────────────────
 df_estado = (
@@ -77,9 +50,7 @@ df_estado = (
     .sort_values("valor", ascending=False)
 )
 
-# ── Mapa coroplético ─────────────────────────────────────────────────────────
-
-# Códigos ISO 3166-2 de estados mexicanos
+# ── Mapeo ISO 3166-2 ─────────────────────────────────────────────────────────
 estado_iso = {
     "Aguascalientes": "MX-AGU", "Baja California": "MX-BCN",
     "Baja California Sur": "MX-BCS", "Campeche": "MX-CAM",
@@ -101,10 +72,13 @@ estado_iso = {
     "Michoacán": "MX-MIC", "Querétaro": "MX-QUE",
     "Yucatán": "MX-YUC", "México": "MX-MEX",
     "Nuevo León": "MX-NLE", "San Luis Potosí": "MX-SLP",
+    "Ciudad de México": "MX-CMX", "Coahuila de Zaragoza": "MX-COA",
+    "Veracruz de Ignacio de la Llave": "MX-VER",
 }
 
 df_estado["iso"] = df_estado["Estado"].map(estado_iso)
 
+# ── Mapa coroplético (CORREGIDO) ─────────────────────────────────────────────
 fig_map = px.choropleth(
     df_estado,
     locations="iso",
@@ -112,28 +86,29 @@ fig_map = px.choropleth(
     hover_name="Estado",
     hover_data={"valor": True, "iso": False},
     color_continuous_scale="YlOrRd",
-    scope="north america",
+    locationmode="ISO-3",
     labels={"valor": label_valor},
     title=f"{segmento} — {label_valor} por Estado",
     fitbounds="locations",
-    basemap_visible=True,
 )
 
-fig_map.update_geos(
-    showcoastlines=True,
-    coastlinecolor="lightgrey",
-    showland=True,
-    landcolor="whitesmoke",
-    showborder=True,
-    showcountries=True,
-    countrycolor="grey",
-    visible=True,
-)
-
+# ✅ update_layout en lugar de update_geos
 fig_map.update_layout(
     margin={"r": 0, "t": 40, "l": 0, "b": 0},
+    height=560,
     coloraxis_colorbar=dict(title=label_valor),
-    height=550,
+    geo=dict(
+        showcoastlines=True,
+        coastlinecolor="lightgrey",
+        showland=True,
+        landcolor="whitesmoke",
+        showborder=True,
+        showcountries=True,
+        countrycolor="grey",
+        showframe=False,
+        fitbounds="locations",
+        scope="north america",
+    )
 )
 
 st.plotly_chart(fig_map, use_container_width=True)
@@ -165,7 +140,7 @@ st.dataframe(
     height=400
 )
 
-# ── Bar chart complementario ─────────────────────────────────────────────────
+# ── Bar chart top 15 ─────────────────────────────────────────────────────────
 st.subheader("📈 Top 15 Estados Exportadores")
 
 top15 = df_tabla.head(15)
@@ -188,4 +163,4 @@ st.plotly_chart(fig_bar, use_container_width=True)
 
 # ── Footer ───────────────────────────────────────────────────────────────────
 st.markdown("---")
-st.caption(f"Fuente: Base de datos de exportaciones de carne México → EE.UU. | Actualizado: {datetime.today().strftime('%d/%m/%Y')}")
+st.caption(f"Fuente: Base de datos exportaciones carne México → EE.UU. | {datetime.today().strftime('%d/%m/%Y')}")
