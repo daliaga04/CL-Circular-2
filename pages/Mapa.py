@@ -1,13 +1,12 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import json
 import requests
 
 st.set_page_config(page_title="Mapa Exportaciones de Carne", layout="wide")
 st.title("🗺️ Exportaciones de Carne por Estado - México")
 
-# ── Cargar datos ──────────────────────────────────────────────────────────────
+# ── Cargar datos ───────────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
     df = pd.read_csv("empresas_exportadoras.csv", encoding="utf-8-sig", low_memory=False)
@@ -19,43 +18,118 @@ def load_data():
 
 df = load_data()
 
-# ── GeoJSON estados de México ─────────────────────────────────────────────────
+# ── GeoJSON ────────────────────────────────────────────────────────────────────
 @st.cache_data
 def load_geojson():
     url = "https://raw.githubusercontent.com/angelnmara/geojson/master/mexicoHigh.json"
-    try:
-        resp = requests.get(url, timeout=15)
-        return resp.json()
-    except Exception:
-        return None
+    return requests.get(url, timeout=15).json()
 
 geojson = load_geojson()
 
-# ── Mapeo de nombres Estado → clave GeoJSON ───────────────────────────────────
+# ── Extraer nombres exactos del GeoJSON ────────────────────────────────────────
+geo_names = {f["properties"]["name"] for f in geojson["features"]}
+
+# ── Mapeo de Estado CSV → nombre exacto GeoJSON ────────────────────────────────
 state_name_map = {
+    "Aguascalientes": "Aguascalientes",
     "Baja California": "Baja California",
     "Baja California Sur": "Baja California Sur",
+    "Campeche": "Campeche",
+    "Chiapas": "Chiapas",
     "Chihuahua": "Chihuahua",
+    "Ciudad de Mexico": "Ciudad de Mexico",
+    "Ciudad de México": "Ciudad de Mexico",
     "Coahuila": "Coahuila de Zaragoza",
-    "Sonora": "Sonora",
-    "Nuevo Leon": "Nuevo León",
-    "Nuevo León": "Nuevo León",
-    "Tamaulipas": "Tamaulipas",
-    "Jalisco": "Jalisco",
-    "Ciudad de Mexico": "Ciudad de México",
-    "Ciudad de México": "Ciudad de México",
-    "Sinaloa": "Sinaloa",
+    "Coahuila de Zaragoza": "Coahuila de Zaragoza",
+    "Colima": "Colima",
     "Durango": "Durango",
+    "Estado de Mexico": "México",
+    "Estado de México": "México",
     "Guanajuato": "Guanajuato",
+    "Guerrero": "Guerrero",
+    "Hidalgo": "Hidalgo",
+    "Jalisco": "Jalisco",
     "Michoacan": "Michoacán de Ocampo",
     "Michoacán": "Michoacán de Ocampo",
-    "Estado de Mexico": "México",
+    "Morelos": "Morelos",
+    "Nayarit": "Nayarit",
+    "Nuevo Leon": "Nuevo León",
+    "Nuevo León": "Nuevo León",
+    "Oaxaca": "Oaxaca",
     "Puebla": "Puebla",
+    "Queretaro": "Querétaro de Arteaga",
+    "Querétaro": "Querétaro de Arteaga",
+    "Quintana Roo": "Quintana Roo",
+    "San Luis Potosi": "San Luis Potosí",
+    "San Luis Potosí": "San Luis Potosí",
+    "Sinaloa": "Sinaloa",
+    "Sonora": "Sonora",
+    "Tabasco": "Tabasco",
+    "Tamaulipas": "Tamaulipas",
+    "Tlaxcala": "Tlaxcala",
     "Veracruz": "Veracruz de Ignacio de la Llave",
     "Yucatan": "Yucatán",
     "Yucatán": "Yucatán",
+    "Zacatecas": "Zacatecas",
 }
 
 df["Estado_geo"] = df["Estado"].map(state_name_map).fillna(df["Estado"])
 
-# ── Sidebar: filtr
+# ── DEBUG (solo en desarrollo, quitar en producción) ───────────────────────────
+sin_match = set(df["Estado_geo"].unique()) - geo_names
+if sin_match:
+    st.sidebar.warning(f"⚠️ Estados sin match GeoJSON: {sin_match}")
+
+# ── Sidebar filtros ────────────────────────────────────────────────────────────
+st.sidebar.header("Filtros")
+
+product_options = {
+    "Total": None,
+    "Bovino Fresco/Refrigerado": "Carne Bovino Fresca/Refrigerada",
+    "Bovino Congelado": "Carne Bovino Congelado",
+    "Cerdo": "Carne Cerdo",
+}
+selected_product_label = st.sidebar.radio("Tipo de producto", list(product_options.keys()))
+selected_product = product_options[selected_product_label]
+
+metric_options = {
+    "Volumen total (kg)": "Volumen",
+    "Valor total (US FOB $)": "Valor",
+}
+selected_metric_label = st.sidebar.radio("Métrica", list(metric_options.keys()))
+col_metric = metric_options[selected_metric_label]
+
+# ── Filtrar y agrupar ──────────────────────────────────────────────────────────
+filtered = df[df["Producto"] == selected_product] if selected_product else df.copy()
+
+grouped = (
+    filtered.groupby("Estado_geo", as_index=False)
+    .agg(
+        Volumen=("Volumen (kg)", "sum"),
+        Valor=("US FOB", "sum"),
+        Empresas=("Exportador", "nunique"),
+        Embarques=("Ordinal", "count"),
+    )
+)
+
+grouped["Volumen_fmt"] = grouped["Volumen"].apply(lambda x: f"{x:,.0f} kg")
+grouped["Valor_fmt"] = grouped["Valor"].apply(lambda x: f"${x:,.2f}")
+
+# ── Mapa ───────────────────────────────────────────────────────────────────────
+fig = px.choropleth_map(
+    grouped,
+    geojson=geojson,
+    locations="Estado_geo",
+    featureidkey="properties.name",
+    color=col_metric,
+    color_continuous_scale="YlOrRd",
+    map_style="carto-positron",
+    zoom=4,
+    center={"lat": 24.0, "lon": -102.0},
+    opacity=0.75,
+    hover_name="Estado_geo",
+    hover_data={
+        "Estado_geo": False,
+        col_metric: False,
+        "Volumen_fmt": True,
+        "Valor_fmt": True,
