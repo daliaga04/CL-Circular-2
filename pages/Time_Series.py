@@ -1,242 +1,230 @@
-import os
-import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.stattools import adfuller
-import pmdarima as pm
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import warnings
-warnings.filterwarnings('ignore')
+import json
 
-st.set_page_config(page_title="Time Series", layout="wide")
-st.title("📈 Time Series — Pronóstico de Comercio Exterior de Cárnicos")
+warnings.filterwarnings("ignore")
 
-# ───────────────── CARGA DE DATOS ─────────────────
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-df = pd.read_csv(
-    os.path.join(BASE_DIR, "..", "Exportaciones_carne.csv"),
-    encoding="utf-8-sig"
-)
+# ══════════════════════════════════════════════════════════════════
+# 1. CARGA Y PREPARACIÓN DE DATOS
+# ══════════════════════════════════════════════════════════════════
+df = pd.read_csv("Exportaciones_carne.csv", encoding="utf-8-sig")
 df.columns = df.columns.str.strip()
-df["Fecha"] = pd.to_datetime(df["Fecha"])
+df["Fecha"] = pd.to_datetime(df["Fecha"], dayfirst=True)
 
-# IMPORTANTE: ajusta el nombre de la columna de producto si es distinto
-# por ejemplo: df["Producto"] = df["DescripcionProducto"]
-# Debe tener valores como: 'Bovino fresca/refrigerada', 'Bovino congelado', 'Porcino'
+# Agregar por flujo sumando todos los tipos de carne
+# flujo_id=1 → Importación | flujo_id=2 → Exportación
+agg = df.groupby(["Fecha", "flujo_id"])["Exportaciones"].sum().reset_index()
+agg = agg.sort_values("Fecha")
 
-# ───────────── FUNCIONES AUXILIARES ─────────────
-@st.cache_data
-def test_estacionariedad(serie, nombre):
-    resultado = adfuller(serie.dropna(), autolag="AIC")
-    return {
-        "Serie": nombre,
-        "Estadístico ADF": round(resultado[0], 4),
-        "p-value": round(resultado[1], 4),
-        "Lags usados": resultado[2],
-        "Observaciones": resultado[3],
-        "¿Estacionaria? (α=0.05)": "Sí" if resultado[1] < 0.05 else "No",
-    }
+exp_ts = agg[agg["flujo_id"] == 2].set_index("Fecha")["Exportaciones"].asfreq("MS")
+imp_ts = agg[agg["flujo_id"] == 1].set_index("Fecha")["Exportaciones"].asfreq("MS")
 
-@st.cache_data
-def ajustar_sarima(serie_values, serie_index_list):
-    serie = pd.Series(serie_values, index=pd.DatetimeIndex(serie_index_list, freq="MS"))
-    auto_model = pm.auto_arima(
-        serie,
-        start_p=0, start_q=0,
-        max_p=3, max_q=3,
-        d=None,
-        start_P=0, start_Q=0,
-        max_P=2, max_Q=2,
-        D=None,
-        m=12,
-        seasonal=True,
-        test="adf",
-        seasonal_test="ocsb",
-        trace=False,
-        error_action="ignore",
-        suppress_warnings=True,
-        stepwise=True,
-        information_criterion="aic",
-    )
-    order = auto_model.order
-    seasonal_order = auto_model.seasonal_order
+# Rellenar meses faltantes con interpolación lineal
+exp_ts = exp_ts.interpolate(method="linear")
+imp_ts = imp_ts.interpolate(method="linear")
 
+print(f"Exportación — {len(exp_ts)} obs | {exp_ts.index[0].date()} → {exp_ts.index[-1].date()}")
+print(f"Importación — {len(imp_ts)} obs | {imp_ts.index[0].date()} → {imp_ts.index[-1].date()}")
+
+
+# ══════════════════════════════════════════════════════════════════
+# 2. PRUEBA DE ESTACIONARIEDAD (ADF)
+# ══════════════════════════════════════════════════════════════════
+def adf_test(series, name):
+    result = adfuller(series.dropna(), autolag="AIC")
+    estatus = "✅ Estacionaria" if result[1] < 0.05 else "❌ No estacionaria"
+    print(f"ADF {name}: stat={result[0]:.4f}, p={result[1]:.4f} — {estatus}")
+
+print("\n── Prueba ADF ──")
+adf_test(exp_ts,              "Exportación nivel")
+adf_test(imp_ts,              "Importación nivel")
+adf_test(exp_ts.diff().dropna(), "Exportación Δ(1)")
+adf_test(imp_ts.diff().dropna(), "Importación Δ(1)")
+# Resultado: d=1 confirmado para ambas series
+
+
+# ══════════════════════════════════════════════════════════════════
+# 3. SELECCIÓN DE ÓRDENES POR AIC (grid search)
+#    p, q ∈ {1, 2}  |  P, Q ∈ {0, 1}  |  d=D=1, s=12
+# ══════════════════════════════════════════════════════════════════
+def buscar_mejor_sarima(ts, nombre):
+    mejor_aic    = np.inf
+    mejor_params = None
+    for p in [1, 2]:
+        for q in [1, 2]:
+            for P in [0, 1]:
+                for Q in [0, 1]:
+                    try:
+                        m = SARIMAX(
+                            ts,
+                            order=(p, 1, q),
+                            seasonal_order=(P, 1, Q, 12),
+                            trend="c",
+                            enforce_stationarity=False,
+                            enforce_invertibility=False,
+                        )
+                        r = m.fit(disp=False, maxiter=150)
+                        if r.aic < mejor_aic:
+                            mejor_aic    = r.aic
+                            mejor_params = (p, 1, q, P, 1, Q)
+                    except Exception:
+                        pass
+    p, d, q, P, D, Q = mejor_params
+    print(f"\n{nombre} — Mejor AIC={mejor_aic:.1f} | SARIMA({p},{d},{q})({P},{D},{Q},12)")
+    return mejor_params
+
+print("\n── Búsqueda de órdenes óptimos ──")
+params_exp = buscar_mejor_sarima(exp_ts, "Exportación")
+params_imp = buscar_mejor_sarima(imp_ts, "Importación")
+
+
+# ══════════════════════════════════════════════════════════════════
+# 4. AJUSTE DE MODELOS FINALES
+# ══════════════════════════════════════════════════════════════════
+def ajustar_sarima(ts, params, nombre):
+    p, d, q, P, D, Q = params
     model = SARIMAX(
-        serie,
-        order=order,
-        seasonal_order=seasonal_order,
+        ts,
+        order=(p, d, q),
+        seasonal_order=(P, D, Q, 12),
+        trend="c",
         enforce_stationarity=False,
         enforce_invertibility=False,
     )
-    results = model.fit(disp=False)
-    return results, order, seasonal_order, auto_model.aic(), auto_model.bic()
+    res = model.fit(disp=False, maxiter=200)
+    print(f"\n── {nombre} ──")
+    print(f"   Orden : SARIMA({p},{d},{q})({P},{D},{Q},12)")
+    print(f"   AIC   : {res.aic:.1f}")
+    print(f"   BIC   : {res.bic:.1f}")
+    return res
 
-@st.cache_data
-def generar_forecast(serie_values, serie_index_list, steps=12):
-    results, order, seasonal_order, aic, bic = ajustar_sarima(serie_values, serie_index_list)
-    forecast_obj = results.get_forecast(steps=steps)
-    forecast_mean = forecast_obj.predicted_mean
-    conf_int = forecast_obj.conf_int(alpha=0.05)
-    return forecast_mean, conf_int, order, seasonal_order, aic, bic, results
+res_exp = ajustar_sarima(exp_ts, params_exp, "Modelo Exportación")
+res_imp = ajustar_sarima(imp_ts, params_imp, "Modelo Importación")
 
-def plot_forecast(serie, forecast_mean, conf_int, titulo, color_hist, color_fc):
-    scale = 1e6
-    fig = go.Figure()
 
-    fig.add_trace(go.Scatter(
-        x=serie.index,
-        y=serie.values / scale,
-        name="Datos históricos",
-        line=dict(color=color_hist, width=2),
-    ))
+# ══════════════════════════════════════════════════════════════════
+# 5. PRONÓSTICO — 12 MESES (2026)
+# ══════════════════════════════════════════════════════════════════
+HORIZON = 12
 
-    fig.add_trace(go.Scatter(
-        x=forecast_mean.index,
-        y=forecast_mean.values / scale,
-        name="Pronóstico SARIMA",
-        line=dict(color=color_fc, width=2.5, dash="dash"),
-    ))
+def obtener_forecast(res):
+    fc      = res.get_forecast(steps=HORIZON)
+    fc_mean = fc.predicted_mean / 1e6
+    fc_ci   = fc.conf_int(alpha=0.05)
+    fc_lo   = fc_ci.iloc[:, 0].clip(lower=0) / 1e6
+    fc_hi   = fc_ci.iloc[:, 1] / 1e6
+    return fc_mean, fc_lo, fc_hi
 
-    lower = conf_int.iloc[:, 0] / scale
-    upper = conf_int.iloc[:, 1] / scale
+fc_e_mean, fc_e_lo, fc_e_hi = obtener_forecast(res_exp)
+fc_i_mean, fc_i_lo, fc_i_hi = obtener_forecast(res_imp)
 
-    fig.add_trace(go.Scatter(
-        x=list(forecast_mean.index) + list(forecast_mean.index[::-1]),
-        y=list(upper) + list(lower[::-1]),
-        fill="toself",
-        fillcolor="rgba(99,110,250,0.15)",
-        line=dict(color="rgba(0,0,0,0)"),
-        name="IC 95%",
-        hoverinfo="skip",
-    ))
+print(f"\n── Pronóstico anual 2026 ──")
+print(f"   Exportación total: ${fc_e_mean.sum():,.0f}M USD")
+print(f"   Importación total: ${fc_i_mean.sum():,.0f}M USD")
 
-    corte = serie.index[-1]
-    y_all = list(serie.values / scale) + list(forecast_mean.values / scale)
-    y_max = max(y_all) * 1.05
-    y_min = min(y_all) * 0.95
 
-    fig.add_shape(
-        type="line",
-        x0=corte, x1=corte, y0=y_min, y1=y_max,
-        line=dict(color="gray", width=1.5, dash="dot"),
-    )
-    fig.add_annotation(
-        x=corte, y=y_max, text="Inicio pronóstico",
-        showarrow=False, xanchor="left",
-        font=dict(size=11, color="gray"),
-    )
-
-    fig.update_layout(
-        title=dict(text=titulo, font=dict(size=18)),
-        xaxis_title="Fecha",
-        yaxis_title="USD Millones",
-        legend=dict(orientation="h", yanchor="top", y=-0.12,
-                    xanchor="center", x=0.5),
-        height=500,
-        margin=dict(l=50, r=30, t=60, b=60),
-        hovermode="x unified",
-    )
-    return fig
-
-# ───────────── SELECTOR DE PRODUCTO ─────────────
-st.markdown("---")
-st.subheader("1️⃣ Selecciona el tipo de tipo_carne")
-
-if "tipo_carne" not in df.columns:
-    st.error("No encuentro la columna 'tipo_carne' en BD_reto_circular.csv. Ajusta el nombre en el código.")
-    st.stop()
-
-productos_disponibles = sorted(df["tipo_carne"].dropna().unique().tolist())
-producto_sel = st.radio(
-    "Tipo de producto",
-    options=productos_disponibles,
-    index=0,
-    horizontal=True,
-)
-st.markdown(f"**Producto seleccionado:** {producto_sel}")
-
-df_prod = df[df["tipo_carne"] == producto_sel].copy()
-
-imp = df_prod[df_prod["flujo_id"] == 1].set_index("Fecha")["Exportaciones"].asfreq("MS")
-exp = df_prod[df_prod["flujo_id"] == 2].set_index("Fecha")["Exportaciones"].asfreq("MS")
-
-FORECAST_STEPS = 12
-
-# ───────────── ADF + AUTO_SARIMA ─────────────
-st.markdown("---")
-st.subheader("2️⃣ Estacionariedad y modelo SARIMA")
-
-col1, col2 = st.columns(2)
-adf_imp = test_estacionariedad(imp, f"Importaciones – {producto_sel}")
-adf_exp = test_estacionariedad(exp, f"Exportaciones – {producto_sel}")
-
-with col1:
-    st.markdown("**Importaciones**")
-    st.json(adf_imp)
-with col2:
-    st.markdown("**Exportaciones**")
-    st.json(adf_exp)
-
-with st.spinner("Ajustando SARIMA para Importaciones..."):
-    fc_imp, ci_imp, order_imp, sorder_imp, aic_imp, bic_imp, res_imp = generar_forecast(
-        imp.values, imp.index.tolist(), FORECAST_STEPS
-    )
-
-with st.spinner("Ajustando SARIMA para Exportaciones..."):
-    fc_exp, ci_exp, order_exp, sorder_exp, aic_exp, bic_exp, res_exp = generar_forecast(
-        exp.values, exp.index.tolist(), FORECAST_STEPS
-    )
-
-c1, c2 = st.columns(2)
-with c1:
-    st.markdown("**Modelo Importaciones**")
-    st.markdown(f"- SARIMA{order_imp}×{sorder_imp}\n- AIC: {aic_imp:,.1f}\n- BIC: {bic_imp:,.1f}")
-with c2:
-    st.markdown("**Modelo Exportaciones**")
-    st.markdown(f"- SARIMA{order_exp}×{sorder_exp}\n- AIC: {aic_exp:,.1f}\n- BIC: {bic_exp:,.1f}")
-
-# ───────────── GRÁFICAS ─────────────
-st.markdown("---")
-st.subheader("3️⃣ Pronóstico a 12 meses con IC 95%")
-
-fig_imp = plot_forecast(
-    imp, fc_imp, ci_imp,
-    f"Importaciones — {producto_sel}",
-    color_hist="#636EFA",
-    color_fc="#EF553B",
-)
-st.plotly_chart(fig_imp, use_container_width=True)
-
-fig_exp = plot_forecast(
-    exp, fc_exp, ci_exp,
-    f"Exportaciones — {producto_sel}",
-    color_hist="#00CC96",
-    color_fc="#AB63FA",
-)
-st.plotly_chart(fig_exp, use_container_width=True)
-
-# ───────────── TABLAS ─────────────
-st.markdown("---")
-st.subheader("4️⃣ Tablas de pronóstico")
-
-tab_imp = pd.DataFrame({
-    "Fecha": fc_imp.index.strftime("%Y-%m"),
-    "Importaciones (USD)": fc_imp.values.round(0).astype(int),
-    "IC Inferior 95%": ci_imp.iloc[:, 0].values.round(0).astype(int),
-    "IC Superior 95%": ci_imp.iloc[:, 1].values.round(0).astype(int),
+# ══════════════════════════════════════════════════════════════════
+# 6. EXPORTAR FORECAST A CSV
+# ══════════════════════════════════════════════════════════════════
+fc_df = pd.DataFrame({
+    "Fecha"               : fc_e_mean.index,
+    "Exp_Forecast_MUSD"   : fc_e_mean.values,
+    "Exp_CI_Low_MUSD"     : fc_e_lo.values,
+    "Exp_CI_High_MUSD"    : fc_e_hi.values,
+    "Imp_Forecast_MUSD"   : fc_i_mean.values,
+    "Imp_CI_Low_MUSD"     : fc_i_lo.values,
+    "Imp_CI_High_MUSD"    : fc_i_hi.values,
 })
-tab_exp = pd.DataFrame({
-    "Fecha": fc_exp.index.strftime("%Y-%m"),
-    "Exportaciones (USD)": fc_exp.values.round(0).astype(int),
-    "IC Inferior 95%": ci_exp.iloc[:, 0].values.round(0).astype(int),
-    "IC Superior 95%": ci_exp.iloc[:, 1].values.round(0).astype(int),
-})
+fc_df.to_csv("sarima_forecast.csv", index=False, encoding="utf-8-sig")
+print("\n✅ sarima_forecast.csv guardado")
 
-c1, c2 = st.columns(2)
-with c1:
-    st.markdown("**Importaciones**")
-    st.dataframe(tab_imp, use_container_width=True, hide_index=True)
-with c2:
-    st.markdown("**Exportaciones**")
-    st.dataframe(tab_exp, use_container_width=True, hide_index=True)
+
+# ══════════════════════════════════════════════════════════════════
+# 7. GRÁFICA — HISTÓRICO + PRONÓSTICO (2 paneles)
+# ══════════════════════════════════════════════════════════════════
+hist_e = exp_ts / 1e6
+hist_i = imp_ts / 1e6
+
+fig, axes = plt.subplots(2, 1, figsize=(14, 10), facecolor="white")
+fig.subplots_adjust(hspace=0.45)
+
+configs = [
+    (
+        hist_e, fc_e_mean, fc_e_lo, fc_e_hi,
+        "Exportación de Carne México — Pronóstico 2026",
+        f"SARIMA({params_exp[0]},1,{params_exp[2]})({params_exp[3]},1,{params_exp[5]},12)"
+        f"  |  AIC={res_exp.aic:.0f}  |  d=1, D=1, s=12",
+        "#1565c0", "#e65100",
+    ),
+    (
+        hist_i, fc_i_mean, fc_i_lo, fc_i_hi,
+        "Importación de Carne México — Pronóstico 2026",
+        f"SARIMA({params_imp[0]},1,{params_imp[2]})({params_imp[3]},1,{params_imp[5]},12)"
+        f"  |  AIC={res_imp.aic:.0f}  |  d=1, D=1, s=12",
+        "#1b5e20", "#bf360c",
+    ),
+]
+
+for ax, (hist, fc_mean, fc_lo, fc_hi, title, subtitle, c_hist, c_fc) in zip(axes, configs):
+    ax.set_facecolor("white")
+    ax.grid(True, color="#eeeeee", linewidth=0.8, zorder=0)
+
+    # Histórico completo
+    ax.plot(hist.index, hist.values,
+            color=c_hist, linewidth=1.8, label="Histórico (2006–2025)", zorder=3)
+
+    # Banda IC 95%
+    ax.fill_between(fc_mean.index, fc_lo.values, fc_hi.values,
+                    color=c_fc, alpha=0.18, label="IC 95%", zorder=2)
+
+    # Línea de pronóstico
+    ax.plot(fc_mean.index, fc_mean.values,
+            color=c_fc, linewidth=2.5, linestyle="--",
+            marker="o", markersize=5, label="Pronóstico 2026", zorder=4)
+
+    # Línea divisoria histórico / forecast
+    last = hist.index[-1]
+    ax.axvline(x=last, color="#9e9e9e", linewidth=1.3, linestyle=":", zorder=5)
+    ax.text(last, ax.get_ylim()[1] if ax.get_ylim()[1] > 0 else fc_hi.max() * 1.05,
+            "  Nov 2025", fontsize=9, color="#616161", va="top")
+
+    # Formato ejes
+    ax.xaxis.set_major_locator(mdates.YearLocator(2))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    ax.tick_params(axis="x", labelsize=10, rotation=0)
+    ax.tick_params(axis="y", labelsize=10)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:,.0f}"))
+    ax.set_ylabel("Millones USD", fontsize=11)
+    ax.set_xlim(pd.Timestamp("2006-01-01"), pd.Timestamp("2026-12-01"))
+
+    # Títulos
+    ax.set_title(f"{title}\n{subtitle}",
+                 fontsize=12, fontweight="bold", pad=10, loc="left")
+
+    # Leyenda
+    ax.legend(loc="upper left", fontsize=10, framealpha=0.85,
+              edgecolor="#cccccc", fancybox=False)
+
+    # Anotación con total anual
+    ax.text(0.99, 0.05,
+            f"Total pronóstico 2026: ${fc_mean.sum():,.0f}M USD",
+            transform=ax.transAxes, ha="right", va="bottom",
+            fontsize=10, color=c_fc, fontweight="bold",
+            bbox=dict(boxstyle="round,pad=0.3",
+                      facecolor="white", edgecolor=c_fc, alpha=0.9))
+
+    for spine in ax.spines.values():
+        spine.set_edgecolor("#cccccc")
+
+plt.suptitle("Modelos SARIMA — Comercio Exterior de Carne México",
+             fontsize=15, fontweight="bold", y=1.01, color="#212121")
+
+plt.savefig("sarima_modelos.png", dpi=150,
+            bbox_inches="tight", facecolor="white", edgecolor="none")
+plt.show()
+print("✅ sarima_modelos.png guardado")
