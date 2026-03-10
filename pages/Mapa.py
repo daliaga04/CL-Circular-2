@@ -17,15 +17,6 @@ df = pd.read_csv(
 )
 df.columns = df.columns.str.strip()
 
-# --- Convertir fecha de serial Excel a datetime ---
-def excel_to_date(serial):
-    if pd.isna(serial):
-        return None
-    return datetime(1899, 12, 30) + timedelta(days=int(serial))
-
-df["Fecha_dt"] = df["Fecha"].apply(excel_to_date)
-df["Mes"] = df["Fecha_dt"].dt.to_period("M").astype(str)
-
 # --- Tipo Carne ---
 tipo_map = {
     "Carne Bovino Fresca/Refrigerada": "Bovino Fresco/Refrigerado",
@@ -88,46 +79,34 @@ mx_geo = cargar_geojson()
 # =====================================================
 st.subheader("⚙️ Filtros")
 
-col_f1, col_f2, col_f3 = st.columns([1, 2, 1])
+col_f1, col_f2 = st.columns([1, 1])
 
 with col_f1:
     tipo_seleccion = st.radio(
         "Tipo de carne",
         options=["Total", "Bovino Fresco/Refrigerado", "Bovino Congelado", "Cerdo"],
         index=0,
+        horizontal=True,
     )
-
-meses_disponibles = sorted(df["Mes"].dropna().unique())
 
 with col_f2:
-    rango_meses = st.select_slider(
-        "Rango de meses",
-        options=meses_disponibles,
-        value=(meses_disponibles[0], meses_disponibles[-1]),
-    )
-
-with col_f3:
     variable = st.radio(
-        "Variable a visualizar",
+        "Variable a visualizar en el mapa",
         options=["Valor (USD M)", "Volumen (t)"],
         index=0,
+        horizontal=True,
     )
 
 st.divider()
 
 # --- Filtrar datos ---
-df_filtrado = df[
-    (df["Mes"] >= rango_meses[0]) & (df["Mes"] <= rango_meses[1])
-].copy()
-
+df_filtrado = df.copy()
 if tipo_seleccion != "Total":
     df_filtrado = df_filtrado[df_filtrado["Tipo Carne"] == tipo_seleccion]
 
 # =====================================================
-# MAPA COROPLÉTICO
+# AGREGACIÓN POR ESTADO
 # =====================================================
-st.subheader("Exportaciones por Estado")
-
 agg_estado = df_filtrado.groupby("Estado", as_index=False).agg({
     "Valor (USD M)": "sum",
     "Volumen (t)": "sum",
@@ -135,6 +114,11 @@ agg_estado = df_filtrado.groupby("Estado", as_index=False).agg({
 }).rename(columns={"US FOB": "Embarques"})
 
 agg_estado["estado_geo"] = agg_estado["Estado"].map(nombre_geojson).fillna(agg_estado["Estado"])
+
+# =====================================================
+# MAPA COROPLÉTICO
+# =====================================================
+st.subheader("Exportaciones por Estado")
 
 if variable == "Valor (USD M)":
     color_label = "Valor (USD M)"
@@ -144,8 +128,6 @@ else:
     color_label = "Volumen (t)"
     titulo_var = "Volumen de Exportación (Toneladas)"
     color_scale = "Blues"
-
-titulo = f"{titulo_var} — {tipo_seleccion} ({rango_meses[0]} a {rango_meses[1]})"
 
 fig_mapa = px.choropleth(
     agg_estado,
@@ -162,7 +144,7 @@ fig_mapa = px.choropleth(
         "estado_geo": False,
     },
     labels={variable: color_label},
-    title=titulo,
+    title=f"{titulo_var} — {tipo_seleccion}",
 )
 
 fig_mapa.update_geos(
@@ -182,13 +164,81 @@ fig_mapa.update_layout(
 
 st.plotly_chart(fig_mapa, use_container_width=True)
 
-# --- Tabla resumen ---
-st.markdown("#### Detalle por Estado")
-tabla = agg_estado[["Estado", "Embarques", "Valor (USD M)", "Volumen (t)"]]\
-    .sort_values(by=variable, ascending=False)\
-    .reset_index(drop=True)
-tabla.index = tabla.index + 1
-tabla["Valor (USD M)"] = tabla["Valor (USD M)"].map("{:,.2f}".format)
-tabla["Volumen (t)"] = tabla["Volumen (t)"].map("{:,.1f}".format)
-tabla["Embarques"] = tabla["Embarques"].map("{:,}".format)
-st.dataframe(tabla, use_container_width=True)
+# =====================================================
+# TRES GRÁFICAS DE BARRAS — TOP 10
+# =====================================================
+st.subheader("📊 Top 10 Estados")
+
+col1, col2, col3 = st.columns(3)
+
+# --- Top 10 por Embarques ---
+with col1:
+    top_emb = agg_estado.nlargest(10, "Embarques").sort_values("Embarques", ascending=True)
+    fig_emb = px.bar(
+        top_emb,
+        x="Embarques",
+        y="Estado",
+        orientation="h",
+        color="Embarques",
+        color_continuous_scale="Purples",
+        title="🚛 Top 10 por Embarques",
+        text="Embarques",
+    )
+    fig_emb.update_traces(texttemplate="%{text:,}", textposition="outside")
+    fig_emb.update_layout(
+        height=420,
+        showlegend=False,
+        coloraxis_showscale=False,
+        margin={"r": 60, "t": 50, "l": 10, "b": 10},
+        xaxis_title="",
+        yaxis_title="",
+    )
+    st.plotly_chart(fig_emb, use_container_width=True)
+
+# --- Top 10 por Valor ---
+with col2:
+    top_val = agg_estado.nlargest(10, "Valor (USD M)").sort_values("Valor (USD M)", ascending=True)
+    fig_val = px.bar(
+        top_val,
+        x="Valor (USD M)",
+        y="Estado",
+        orientation="h",
+        color="Valor (USD M)",
+        color_continuous_scale="YlOrRd",
+        title="💵 Top 10 por Valor (USD M)",
+        text="Valor (USD M)",
+    )
+    fig_val.update_traces(texttemplate="%{text:,.1f}", textposition="outside")
+    fig_val.update_layout(
+        height=420,
+        showlegend=False,
+        coloraxis_showscale=False,
+        margin={"r": 60, "t": 50, "l": 10, "b": 10},
+        xaxis_title="",
+        yaxis_title="",
+    )
+    st.plotly_chart(fig_val, use_container_width=True)
+
+# --- Top 10 por Volumen ---
+with col3:
+    top_vol = agg_estado.nlargest(10, "Volumen (t)").sort_values("Volumen (t)", ascending=True)
+    fig_vol = px.bar(
+        top_vol,
+        x="Volumen (t)",
+        y="Estado",
+        orientation="h",
+        color="Volumen (t)",
+        color_continuous_scale="Blues",
+        title="⚖️ Top 10 por Volumen (t)",
+        text="Volumen (t)",
+    )
+    fig_vol.update_traces(texttemplate="%{text:,.0f}", textposition="outside")
+    fig_vol.update_layout(
+        height=420,
+        showlegend=False,
+        coloraxis_showscale=False,
+        margin={"r": 60, "t": 50, "l": 10, "b": 10},
+        xaxis_title="",
+        yaxis_title="",
+    )
+    st.plotly_chart(fig_vol, use_container_width=True)
