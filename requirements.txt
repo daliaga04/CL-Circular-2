@@ -10,3 +10,5 @@ requests
 statsmodels
 pmdarima
 polyline
+sklearn
+json
