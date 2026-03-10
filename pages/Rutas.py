@@ -2,8 +2,6 @@ import os
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import requests
-import json
 
 st.set_page_config(page_title="Mapa de Rutas", layout="wide")
 st.title("📍 Rutas de Exportación: Origen → Aduana Fronteriza")
@@ -97,129 +95,213 @@ aduana_coords = {
 }
 
 # =====================================================
-# WAYPOINTS MANUALES POR RUTA (simulan carreteras reales)
-# Formato: "Nombre Ruta CSV" -> lista de (lat, lon)
+# WAYPOINTS EXACTOS POR NOMBRE DE RUTA DEL CSV
 # =====================================================
-route_waypoints = {
-    # Carr. 57D México - Querétaro - SLP - Matehuala - Monterrey - Nuevo Laredo
+ROUTE_WAYPOINTS = {
     "Carr. 57D México - Querétaro - SLP - Matehuala - Monterrey - Nuevo Laredo": [
-        (19.4326, -99.1332),   # CDMX
-        (20.5888, -100.3899),  # Querétaro
-        (21.8818, -101.6833),  # San Luis Potosí
-        (23.6478, -100.6572),  # Matehuala
-        (25.6866, -100.3161),  # Monterrey
-        (27.4761, -99.5066),   # Nuevo Laredo
+        (19.4326, -99.1332), (20.5888, -100.3899), (21.8818, -101.6833),
+        (23.6478, -100.6572), (25.6866, -100.3161), (27.4761, -99.5066),
     ],
-    # Carr. 45 Chihuahua - Cd. Juárez
-    "Carr. 45 Chihuahua - Cd. Juárez": [
-        (28.6353, -106.0889),  # Chihuahua
-        (30.0681, -106.8843),  # Villa Ahumada
-        (31.6904, -106.4245),  # Ciudad Juárez
-    ],
-    # Carr. 15 Hermosillo - Nogales
-    "Carr. 15 Hermosillo - Nogales": [
-        (29.0729, -110.9559),  # Hermosillo
-        (30.3285, -110.9742),  # Santa Ana
-        (31.3120, -110.9466),  # Nogales
-    ],
-    # Carr. 2 Mexicali - Tijuana
-    "Carr. 2 Mexicali - Tijuana": [
-        (32.6246, -115.4523),  # Mexicali
-        (32.5547, -116.4030),  # Tecate
-        (32.5149, -117.0382),  # Tijuana
-    ],
-    # Carr. 15 Culiacán - Nogales
-    "Carr. 15 Culiacán - Nogales": [
-        (24.7994, -107.3940),  # Culiacán
-        (25.5694, -108.4671),  # Guasave
-        (27.0700, -109.4430),  # Navojoa
-        (29.0729, -110.9559),  # Hermosillo
-        (30.3285, -110.9742),  # Santa Ana
-        (31.3120, -110.9466),  # Nogales
-    ],
-    # Carr. 85 Apodaca - Monterrey - Nuevo Laredo
-    "Carr. 85 Apodaca - Monterrey - Nuevo Laredo": [
-        (25.7817, -100.1885),  # Apodaca
-        (25.6866, -100.3161),  # Monterrey
-        (26.3538, -99.9947),   # Sabinas Hidalgo
-        (27.4761, -99.5066),   # Nuevo Laredo
-    ],
-    # Carr. 40D Saltillo - Monterrey - Nuevo Laredo
-    "Carr. 40D Saltillo - Monterrey - Nuevo Laredo": [
-        (25.4260, -101.0030),  # Saltillo
-        (25.6866, -100.3161),  # Monterrey
-        (27.4761, -99.5066),   # Nuevo Laredo
-    ],
-    # Carr. 15 Navolato - Nogales
-    "Carr. 15 Navolato - Nogales": [
-        (24.7676, -107.7023),  # Navolato
-        (25.5694, -108.4671),  # Guasave
-        (27.0700, -109.4430),  # Navojoa
-        (29.0729, -110.9559),  # Hermosillo
-        (31.3120, -110.9466),  # Nogales
-    ],
-    # Carr. 15 Cajeme - Nogales
-    "Carr. 15 Cajeme - Nogales": [
-        (27.4896, -109.9414),  # Cajeme
-        (29.0729, -110.9559),  # Hermosillo
-        (30.3285, -110.9742),  # Santa Ana
-        (31.3120, -110.9466),  # Nogales
-    ],
-    # Carr. 45 Satevo - Cd. Juárez
-    "Carr. 45 Satevo - Cd. Juárez": [
-        (28.0068, -106.0835),  # Satevo
-        (28.6353, -106.0889),  # Chihuahua
-        (30.0681, -106.8843),  # Villa Ahumada
-        (31.6904, -106.4245),  # Ciudad Juárez
-    ],
-    # Carr. 45 Cuauhtémoc - Cd. Juárez
-    "Carr. 45 Cuauhtémoc - Cd. Juárez": [
-        (28.4057, -106.8652),  # Cuauhtémoc
-        (28.6353, -106.0889),  # Chihuahua
-        (30.0681, -106.8843),  # Villa Ahumada
-        (31.6904, -106.4245),  # Ciudad Juárez
-    ],
-    # Carr. 57 SLP - Monterrey - Nuevo Laredo
-    "Carr. 57 SLP - Monterrey - Nuevo Laredo": [
-        (21.8818, -101.6833),  # San Luis Potosí
-        (23.6478, -100.6572),  # Matehuala
-        (25.6866, -100.3161),  # Monterrey
-        (27.4761, -99.5066),   # Nuevo Laredo
-    ],
-    # Carr. 180 Mérida - Progreso
-    "Carr. 180 Mérida - Progreso": [
-        (20.9674, -89.5926),   # Mérida
-        (21.2817, -89.6625),   # Progreso
-    ],
-    # Carr. 307 Puerto Morelos
-    "Carr. 307 Puerto Morelos": [
-        (21.1619, -86.8515),   # Cancún
-        (20.8464, -86.8742),   # Puerto Morelos
-    ],
-    # Carr. 57D Querétaro - Nuevo Laredo
     "Carr. 57D Querétaro - SLP - Matehuala - Monterrey - Nuevo Laredo": [
-        (20.5888, -100.3899),  # Querétaro
-        (21.8818, -101.6833),  # San Luis Potosí
-        (23.6478, -100.6572),  # Matehuala
-        (25.6866, -100.3161),  # Monterrey
-        (27.4761, -99.5066),   # Nuevo Laredo
+        (20.5888, -100.3899), (21.8818, -101.6833), (23.6478, -100.6572),
+        (25.6866, -100.3161), (27.4761, -99.5066),
     ],
-    # Carr. 15D Guadalajara - Tepic - Culiacán - Nogales
-    "Carr. 15D Guadalajara - Tepic - Culiacán - Nogales": [
-        (20.6597, -103.3496),  # Guadalajara
-        (21.5085, -104.8954),  # Tepic
-        (24.7994, -107.3940),  # Culiacán
-        (27.0700, -109.4430),  # Navojoa
-        (29.0729, -110.9559),  # Hermosillo
-        (31.3120, -110.9466),  # Nogales
+    "Carr. 57D Cuautitlán Izcalli - Querétaro - SLP - Monterrey - Nuevo Laredo": [
+        (19.6476, -99.2537), (20.5888, -100.3899), (21.8818, -101.6833),
+        (23.6478, -100.6572), (25.6866, -100.3161), (27.4761, -99.5066),
     ],
+    "Carr. 57D Tlalnepantla - Querétaro - SLP - Monterrey - Nuevo Laredo": [
+        (19.5370, -99.1949), (20.5888, -100.3899), (21.8818, -101.6833),
+        (23.6478, -100.6572), (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 57D Tlalnepantla - Querétaro - SLP - Monterrey - Colombia": [
+        (19.5370, -99.1949), (20.5888, -100.3899), (21.8818, -101.6833),
+        (23.6478, -100.6572), (25.6866, -100.3161), (27.6678, -99.7584),
+    ],
+    "Carr. 55 Toluca - México - Carr. 57D Querétaro - SLP - Monterrey - Nuevo Laredo": [
+        (19.2826, -99.6557), (19.4326, -99.1332), (20.5888, -100.3899),
+        (21.8818, -101.6833), (23.6478, -100.6572), (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 150D Puebla - México - Carr. 57D Querétaro - SLP - Monterrey - Nuevo Laredo": [
+        (19.0414, -98.2063), (19.4326, -99.1332), (20.5888, -100.3899),
+        (21.8818, -101.6833), (23.6478, -100.6572), (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 150D Puebla - México - Carr. 57D Querétaro - SLP - Monterrey - Colombia": [
+        (19.0414, -98.2063), (19.4326, -99.1332), (20.5888, -100.3899),
+        (21.8818, -101.6833), (23.6478, -100.6572), (25.6866, -100.3161), (27.6678, -99.7584),
+    ],
+    "Carr. 150D Puebla - México - Carr. 57D Querétaro - SLP - Cd. Victoria - Reynosa": [
+        (19.0414, -98.2063), (19.4326, -99.1332), (20.5888, -100.3899),
+        (21.8818, -101.6833), (23.7369, -99.1411), (26.0920, -98.2783),
+    ],
+    "Carr. 145D Yanga - Puebla - México - Carr. 85D Querétaro - SLP - Monterrey - Nuevo Laredo": [
+        (18.8303, -96.7978), (19.0414, -98.2063), (19.4326, -99.1332),
+        (20.5888, -100.3899), (21.8818, -101.6833), (23.6478, -100.6572),
+        (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 180 Boca del Río - Córdoba - Puebla - México - Carr. 85D Monterrey - Nuevo Laredo": [
+        (19.1057, -96.1087), (18.8842, -96.9234), (19.0414, -98.2063),
+        (19.4326, -99.1332), (20.5888, -100.3899), (21.8818, -101.6833),
+        (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 180 La Antigua - Xalapa - México - Carr. 85D Querétaro - SLP - Monterrey - Nuevo Laredo": [
+        (19.3270, -96.3144), (19.5261, -96.9249), (19.4326, -99.1332),
+        (20.5888, -100.3899), (21.8818, -101.6833), (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 85 Apodaca - Monterrey - Nuevo Laredo": [
+        (25.7817, -100.1885), (25.6866, -100.3161), (26.3538, -99.9947), (27.4761, -99.5066),
+    ],
+    "Carr. 85 Guadalupe - Monterrey - Nuevo Laredo": [
+        (25.6771, -100.2601), (25.6866, -100.3161), (26.3538, -99.9947), (27.4761, -99.5066),
+    ],
+    "Carr. 85 Monterrey - Nuevo Laredo": [
+        (25.6866, -100.3161), (26.3538, -99.9947), (27.4761, -99.5066),
+    ],
+    "Carr. 85 Guadalupe - Monterrey - Colombia": [
+        (25.6771, -100.2601), (25.6866, -100.3161), (26.3538, -99.9947), (27.6678, -99.7584),
+    ],
+    "Carr. 85 Monterrey - Colombia": [
+        (25.6866, -100.3161), (26.3538, -99.9947), (27.6678, -99.7584),
+    ],
+    "Carr. 45 Chihuahua - Cd. Juárez": [
+        (28.6353, -106.0889), (30.0681, -106.8843), (31.6904, -106.4245),
+    ],
+    "Carr. 45 Chihuahua - Cd. Juárez - Guadalupe-Tornillo": [
+        (28.6353, -106.0889), (30.0681, -106.8843), (31.6904, -106.4245), (31.4425, -106.1500),
+    ],
+    "Satevo - Chihuahua - Carr. 45 Cd. Juárez": [
+        (28.0068, -106.0835), (28.6353, -106.0889), (30.0681, -106.8843), (31.6904, -106.4245),
+    ],
+    "Carr. 45 Chihuahua - Gómez Palacio - Saltillo - Monterrey - Nuevo Laredo": [
+        (28.6353, -106.0889), (25.5669, -103.4500), (25.4260, -101.0030),
+        (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 45 Chihuahua - Torreón - Saltillo - Monterrey - Colombia": [
+        (28.6353, -106.0889), (25.5428, -103.4068), (25.4260, -101.0030),
+        (25.6866, -100.3161), (27.6678, -99.7584),
+    ],
+    "Carr. 16 Chihuahua - Hermosillo - Carr. 15 Nogales": [
+        (28.6353, -106.0889), (29.0729, -110.9559), (30.3285, -110.9742), (31.3120, -110.9466),
+    ],
+    "Carr. 16 Cuauhtémoc - Hermosillo - Caborca - Mexicali": [
+        (28.4057, -106.8652), (29.0729, -110.9559), (30.7167, -112.1333), (32.6246, -115.4523),
+    ],
+    "Carr. a Cd. Juárez (Aeropuerto local)": [
+        (28.7028, -105.9642), (31.6904, -106.4245),
+    ],
+    "Blvd. Juan Pablo II - Puente Zaragoza": [
+        (31.7200, -106.4000), (31.7458, -106.4472),
+    ],
+    "Carr. 15 Hermosillo - Nogales": [
+        (29.0729, -110.9559), (30.3285, -110.9742), (31.3120, -110.9466),
+    ],
+    "Carr. 15 Cajeme - Hermosillo - Nogales": [
+        (27.4896, -109.9414), (29.0729, -110.9559), (30.3285, -110.9742), (31.3120, -110.9466),
+    ],
+    "Carr. 15 Navojoa - Hermosillo - Nogales": [
+        (27.0700, -109.4430), (29.0729, -110.9559), (30.3285, -110.9742), (31.3120, -110.9466),
+    ],
+    "Carr. 15 Guasave - Los Mochis - Navojoa - Hermosillo - Nogales": [
+        (25.5694, -108.4671), (25.7908, -108.9957), (27.0700, -109.4430),
+        (29.0729, -110.9559), (31.3120, -110.9466),
+    ],
+    "Carr. 15 Culiacán - Los Mochis - Navojoa - Hermosillo - Nogales": [
+        (24.7994, -107.3940), (25.7908, -108.9957), (27.0700, -109.4430),
+        (29.0729, -110.9559), (31.3120, -110.9466),
+    ],
+    "Carr. 15 Navolato - Culiacán - Los Mochis - Hermosillo - Nogales": [
+        (24.7676, -107.7023), (24.7994, -107.3940), (25.7908, -108.9957),
+        (27.0700, -109.4430), (29.0729, -110.9559), (31.3120, -110.9466),
+    ],
+    "Carr. 15 Navojoa - Hermosillo - Caborca - Carr. 2 Ensenada": [
+        (27.0700, -109.4430), (29.0729, -110.9559), (30.7167, -112.1333),
+        (32.0000, -114.8000), (31.8667, -116.5964),
+    ],
+    "Carr. 15 Culiacán - Hermosillo - Caborca - Sonoyta - Mexicali - Tijuana": [
+        (24.7994, -107.3940), (29.0729, -110.9559), (30.7167, -112.1333),
+        (31.8635, -113.0241), (32.6246, -115.4523), (32.5149, -117.0382),
+    ],
+    "Carr. 15 Culiacán - Los Mochis - Guaymas - Caborca - Sonoyta - Mexicali": [
+        (24.7994, -107.3940), (25.7908, -108.9957), (27.9214, -110.8989),
+        (30.7167, -112.1333), (31.8635, -113.0241), (32.6246, -115.4523),
+    ],
+    "Carr. 15 Guasave - Culiacán - Carr. 40D Durango - Torreón - Saltillo - Monterrey - Nuevo Laredo": [
+        (25.5694, -108.4671), (24.7994, -107.3940), (24.0232, -104.6532),
+        (25.5428, -103.4068), (25.4260, -101.0030), (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 40D Culiacán - Durango - Torreón - Saltillo - Monterrey - Nuevo Laredo": [
+        (24.7994, -107.3940), (24.0232, -104.6532), (25.5428, -103.4068),
+        (25.4260, -101.0030), (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 40D Culiacán - Durango - Torreón - Saltillo - Salinas Victoria": [
+        (24.7994, -107.3940), (24.0232, -104.6532), (25.5428, -103.4068),
+        (25.4260, -101.0030), (25.6866, -100.3161), (25.9581, -100.3007),
+    ],
+    "Carr. 40 Torreón - Saltillo - Monterrey - Carr. 85 Nuevo Laredo": [
+        (25.5428, -103.4068), (25.4260, -101.0030), (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 2 Mexicali - Carr. 15 - Carr. 40 - Carr. 85 Nuevo Laredo": [
+        (32.6246, -115.4523), (29.0729, -110.9559), (25.5428, -103.4068),
+        (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 45 Aguascalientes - SLP - Carr. 57 Monterrey - Colombia": [
+        (21.8818, -102.2916), (21.8818, -101.6833), (23.6478, -100.6572),
+        (25.6866, -100.3161), (27.6678, -99.7584),
+    ],
+    "Carr. 45 Jesús María - Aguascalientes - SLP - Carr. 57 Monterrey - Colombia": [
+        (21.9614, -102.3443), (21.8818, -102.2916), (21.8818, -101.6833),
+        (25.6866, -100.3161), (27.6678, -99.7584),
+    ],
+    "Carr. 45 Pénjamo - Salamanca - SLP - Carr. 57 Monterrey - Nuevo Laredo": [
+        (20.4316, -101.7262), (20.5700, -101.1950), (21.8818, -101.6833),
+        (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 45 Pénjamo - Salamanca - SLP - Carr. 57 Monterrey - Colombia": [
+        (20.4316, -101.7262), (20.5700, -101.1950), (21.8818, -101.6833),
+        (25.6866, -100.3161), (27.6678, -99.7584),
+    ],
+    "Carr. 43 Morelia - Salamanca - Carr. 45 SLP - Carr. 57 Monterrey - Nuevo Laredo": [
+        (19.7060, -101.1950), (20.5700, -101.1950), (21.8818, -101.6833),
+        (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 54 Jerez - Zacatecas - Carr. 49 SLP - Carr. 57 Monterrey - Nuevo Laredo": [
+        (22.6498, -103.0009), (22.7709, -102.5832), (21.8818, -101.6833),
+        (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 54D Acatlán - Guadalajara - Carr. 80 Aguascalientes - SLP - Monterrey - Nuevo Laredo": [
+        (20.4200, -103.5900), (20.6597, -103.3496), (21.8818, -102.2916),
+        (21.8818, -101.6833), (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 80 San Juan de los Lagos - Aguascalientes - SLP - Carr. 57 Monterrey - Nuevo Laredo": [
+        (21.2466, -102.3316), (21.8818, -102.2916), (21.8818, -101.6833),
+        (25.6866, -100.3161), (27.4761, -99.5066),
+    ],
+    "Carr. 80 Tampico - Ciudad Victoria - Carr. 85 Nuevo Laredo": [
+        (22.2331, -97.8613), (23.7369, -99.1411), (27.4761, -99.5066),
+    ],
+    "Carr. Tamuín - Ciudad Valles - Carr. 85 Ciudad Victoria - Nuevo Laredo": [
+        (22.0005, -98.7724), (21.9973, -99.0161), (23.7369, -99.1411), (27.4761, -99.5066),
+    ],
+    "Carr. 261 Mérida - Progreso": [
+        (20.9674, -89.5926), (21.2817, -89.6625),
+    ],
+    "Carr. 180 Mérida - Villahermosa - Carr. 186 - Cd. Victoria - Nuevo Laredo": [
+        (20.9674, -89.5926), (17.9892, -92.9475), (23.7369, -99.1411), (27.4761, -99.5066),
+    ],
+    "Carr. 180 Mérida - Villahermosa - Carr. 186 - Monterrey - Colombia": [
+        (20.9674, -89.5926), (17.9892, -92.9475), (25.6866, -100.3161), (27.6678, -99.7584),
+    ],
+    "Allende NL - Monterrey - Saltillo - Torreón - Mazatlán - Culiacán - Mexicali": [
+        (25.2869, -100.0171), (25.6866, -100.3161), (25.4260, -101.0030),
+        (25.5428, -103.4068), (23.2329, -106.4062), (24.7994, -107.3940), (32.6246, -115.4523),
+    ],
+    "Local": None,
 }
 
 def get_waypoints(ruta_nombre, lat_orig, lon_orig, lat_dest, lon_dest):
-    """Busca waypoints por nombre de ruta; si no existe, usa línea recta."""
-    for key, wps in route_waypoints.items():
-        if key.lower() in ruta_nombre.lower() or ruta_nombre.lower() in key.lower():
-            return wps
+    wps = ROUTE_WAYPOINTS.get(ruta_nombre)
+    if wps:
+        return wps
     return [(lat_orig, lon_orig), (lat_dest, lon_dest)]
 
 # =====================================================
@@ -268,7 +350,7 @@ rutas_plot = rutas_agg.dropna(subset=["lat_orig", "lon_orig", "lat_dest", "lon_d
 st.sidebar.markdown(f"**Rutas a graficar:** {len(rutas_plot)}")
 
 # =====================================================
-# CONSTRUIR MAPA con Scattermapbox (fondo real)
+# CONSTRUIR MAPA
 # =====================================================
 def seguridad_color(idx):
     if idx <= 3:   return "green"
