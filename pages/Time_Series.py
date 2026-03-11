@@ -237,7 +237,7 @@ st.divider()
 st.subheader("📊 Histórico y Pronóstico")
 
 orden_e = (f"SARIMA({params_exp[0]},1,{params_exp[2]})"
-           f"({params_exp[3]},1)
+           f"({params_exp[3]},1,{params_exp[5]},12)  |  AIC={aic_exp:.0f}")
 orden_i = (f"SARIMA({params_imp[0]},1,{params_imp[2]})"
            f"({params_imp[3]},1,{params_imp[5]},12)  |  AIC={aic_imp:.0f}"
            f"  |  d=1, D=1, s=12")
