@@ -24,9 +24,11 @@ en el contexto del comercio entre **México y Estados Unidos**. Integra en un mi
 
 from PIL import Image
 
-# Logo en la parte superior
 logo = Image.open("Logo-Cl-Circular.png")
-st.image(logo, width=250)
+
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    st.image(logo, width=500)
 
 st.markdown("---")
 
