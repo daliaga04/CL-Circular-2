@@ -18,7 +18,9 @@ en el contexto del comercio entre **México y Estados Unidos**. Integra en un mi
 - Un **módulo de segmentación de empresas** que clasifica a los exportadores según su perfil operativo y potencial de negocio.
 - Un **módulo de aduanas** indicando donde los principales cruces fronterizos.
 - Un **módulo de mapa** donde se puede apreciar de que estado proviene la carne.
-- Un **módulo de rutas** donde se puede apreciar las rutas que toman los camiones de incio al cruce fronterizo.  
+- Un **módulo de rutas** donde se puede apreciar las rutas que toman los camiones de incio al cruce fronterizo.
+
+
 """
 )
 
