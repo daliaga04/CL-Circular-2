@@ -239,7 +239,7 @@ st.subheader("📊 Histórico y Pronóstico")
 orden_e = (f"SARIMA({params_exp[0]},1,{params_exp[2]})"
            f"({params_exp[3]},1,{params_exp[5]},12)  |  AIC={aic_exp:.0f}")
 orden_i = (f"SARIMA({params_imp[0]},1,{params_imp[2]})"
-           f"({params_imp[3]},1,{params_imp[5]},12)  |  AIC={aic_imp:.0f}")
+           f"({params_imp[3]}")
 fig_exp = crear_grafica(
     exp_ts / 1e6, fc_e_mean, fc_e_lo, fc_e_hi,
     "Exportación de Carne México", orden_e,
