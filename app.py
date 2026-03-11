@@ -22,6 +22,12 @@ en el contexto del comercio entre **México y Estados Unidos**. Integra en un mi
 """
 )
 
+from PIL import Image
+
+# Logo en la parte superior
+logo = Image.open("Logo-Cl-Circular.png")
+st.image(logo, width=250)
+
 st.markdown("---")
 
 # ===== INTRODUCCIÓN AL TEMA =====
