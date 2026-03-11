@@ -202,9 +202,7 @@ k2.metric("📥 Importación (próx. 12 m)",
 k3.metric("Modelo Exportación",
           f"SARIMA({params_exp[0]},1,{params_exp[2]})")
 k4.metric("Modelo Importación",
-          f"SARIMA({params_imp[0]},1,{params_imp[2]})"
-          f"({params_imp[3]},1,{params_imp[5]},12)")
-
+          f"SARIMA({params_imp[0]},1,{params_imp[2]})")
 st.divider()
 
 # ── Prueba ADF ────────────────────────────────────────────────────
