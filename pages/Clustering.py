@@ -38,8 +38,8 @@ COLORS = ["#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00", "#a65628", "#f7
 # SIDEBAR
 # =====================================================
 st.sidebar.header("⚙️ Parámetros del Modelo")
-n_clusters = st.sidebar.slider("Número de clusters (k)", min_value=2, max_value=8, value=4)
-excluir_micro = st.sidebar.checkbox("Excluir empresas sin embarques (Micro)", value=False)
+n_clusters = st.sidebar.slider("Número de clusters (k)", min_value=2, max_value=8, value=3)
+excluir_micro = st.sidebar.checkbox("Excluir empresas sin embarques (Micro)", value=True)
 
 # =====================================================
 # AGREGACIÓN POR EMPRESA
