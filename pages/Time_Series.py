@@ -200,8 +200,7 @@ k1.metric("📤 Exportación (próx. 12 m)",
 k2.metric("📥 Importación (próx. 12 m)",
           f"${fc_i_mean.sum():,.0f}M USD")
 k3.metric("Modelo Exportación",
-          f"SARIMA({params_exp[0]},1,{params_exp[2]})"
-          f"({params_exp[3]},1,{params_exp[5]},12)")
+          f"SARIMA({params_exp[0]},1,{params_exp[2]})")
 k4.metric("Modelo Importación",
           f"SARIMA({params_imp[0]},1,{params_imp[2]})"
           f"({params_imp[3]},1,{params_imp[5]},12)")
