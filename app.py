@@ -18,7 +18,7 @@ en el contexto del comercio entre **México y Estados Unidos**. Integra en un mi
 - Un **módulo de segmentación de empresas** que clasifica a los exportadores según su perfil operativo y potencial de negocio.
 - Un **módulo de aduanas** indicando donde los principales cruces fronterizos.
 - Un **módulo de mapa** donde se puede apreciar de que estado proviene la carne.
-- Un *módulo de rutas** donde se puede apreciar las rutas que toman los camiones de incio al cruce fronterizo.  
+- Un **módulo de rutas** donde se puede apreciar las rutas que toman los camiones de incio al cruce fronterizo.  
 """
 )
 
@@ -53,50 +53,6 @@ visualizar escenarios de ventas futuros y distinguir perfiles de empresas objeti
 y un soporte práctico para la toma de decisiones estratégicas en el sector cárnico y de alimentos congelados.
 """
 )
-
-st.markdown("---")
-
-# ===== SECCIÓN: CÓMO USAR LA APLICACIÓN =====
-st.subheader("Cómo navegar la aplicación")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown(
-        """
-**1. Series de Tiempo (Time_Series.py)**  
-En esta sección podrás:
-
-- Visualizar las series históricas de exportaciones e importaciones de carne.
-- Consultar los **pronósticos SARIMA** a 12 meses con bandas de confianza.
-- Descargar los resultados en formato CSV para análisis adicional.
-"""
-    )
-
-with col2:
-    st.markdown(
-        """
-**2. Segmentación de Empresas (Clusters / Empresas)**  
-En esta sección podrás:
-
-- Analizar los **clusters de empresas exportadoras** (Micro, Pequeñas, Medianas y Grandes).
-- Filtrar por segmento, empresa o tipo de producto.
-- Identificar clientes potenciales según volumen, logística y composición de productos.
-"""
-    )
-
-st.markdown(
-    """
-**3. Reportes y Anexos**  
-En las secciones de reportes podrás consultar:
-
-- Resúmenes ejecutivos del análisis cuantitativo.
-- Principales hallazgos y recomendaciones estratégicas.
-- Detalles metodológicos (técnicas de preparación de datos, especificaciones de modelos, supuestos y limitaciones).
-"""
-)
-
-st.markdown("---")
 
 # ===== FOOTER =====
 st.caption(
