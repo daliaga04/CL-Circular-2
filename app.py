@@ -56,6 +56,8 @@ y un soporte práctico para la toma de decisiones estratégicas en el sector cá
 
 
 # ===== FOOTER =====
+st.markdown("---")
+
 st.caption(
     "Esta plataforma fue desarrollada como herramienta de apoyo a la toma de decisiones "
     "en el sector cárnico y de alimentos congelados, utilizando datos de Penta_Transaction "
